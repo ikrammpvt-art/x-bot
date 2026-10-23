@@ -1,0 +1,47 @@
+name: XBot 15-Minute Roundup
+
+on:
+  schedule:
+    # Runs every 15 minutes
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-roundup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          python patch_twikit.py
+
+      - name: Cache Database
+        uses: actions/cache@v4
+        with:
+          path: storage/xbot.db
+          key: xbot-db-${{ github.run_id }}
+          restore-keys: |
+            xbot-db-
+
+      - name: Execute Monitoring Cycle
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TWITTER_AUTH_TOKEN: ${{ secrets.TWITTER_AUTH_TOKEN }}
+          TWITTER_CT0: ${{ secrets.TWITTER_CT0 }}
+          AI_PROVIDER: "gemini"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: "gemini-3.8-flash"
+          INCLUDE_REPLIES: "true"
+          INCLUDE_RETWEETS: "false"
+        run: |
+          python run_once.py
