@@ -79,6 +79,53 @@ def apply_patch():
         else:
             print("user.py is already up to date.")
 
+    # Patch 3: client/client.py (resilience against transaction ID failures on datacenter IPs)
+    client_file = twikit_dir / "client" / "client.py"
+    if client_file.exists():
+        content = client_file.read_text(encoding="utf-8")
+        target_block = """        if not self.client_transaction.home_page_response:
+            cookies_backup = self.get_cookies().copy()
+            ct_headers = {
+                'Accept-Language': f'{self.language},{self.language.split("-")[0]};q=0.9',
+                'Cache-Control': 'no-cache',
+                'Referer': f'https://{DOMAIN}',
+                'User-Agent': self._user_agent
+            }
+            await self.client_transaction.init(self.http, ct_headers)
+            self.set_cookies(cookies_backup, clear_cookies=True)
+
+        tid = self.client_transaction.generate_transaction_id(method=method, path=urlparse(url).path)
+        headers['X-Client-Transaction-Id'] = tid"""
+
+        resilient_block = """        if not self.client_transaction.home_page_response:
+            cookies_backup = self.get_cookies().copy()
+            ct_headers = {
+                'Accept-Language': f'{self.language},{self.language.split("-")[0]};q=0.9',
+                'Cache-Control': 'no-cache',
+                'Referer': f'https://{DOMAIN}',
+                'User-Agent': self._user_agent
+            }
+            try:
+                await self.client_transaction.init(self.http, ct_headers)
+            except Exception:
+                pass
+            self.set_cookies(cookies_backup, clear_cookies=True)
+
+        try:
+            tid = self.client_transaction.generate_transaction_id(method=method, path=urlparse(url).path)
+            if tid:
+                headers['X-Client-Transaction-Id'] = tid
+        except Exception:
+            pass"""
+
+        if target_block in content:
+            content = content.replace(target_block, resilient_block)
+            client_file.write_text(content, encoding="utf-8")
+            print("Successfully patched twikit/client/client.py for transaction ID resilience")
+        else:
+            print("client.py is already up to date or already patched.")
+
+
     print("twikit patch verification complete.")
 
 
