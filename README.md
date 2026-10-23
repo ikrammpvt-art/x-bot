@@ -1,3 +1,14 @@
+---
+title: XBot Geopolitical & Financial Intelligence
+emoji: 🌐
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 4.44.1
+app_file: app.py
+pinned: false
+---
+
 # 🤖 X (Twitter) Account Monitoring & Grok-Style Telegram Bot
 
 An automatic X (Twitter) account monitoring bot that checks accounts every 15 minutes, extracts newly published posts, and delivers them directly to your Telegram chat or channel with **Grok-style explanations in simple English and deep context**.
