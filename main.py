@@ -100,9 +100,38 @@ class XBotMonitor:
             asyncio.create_task(self.listener.start())
             await self.telegram.send_startup_ping(len(self.accounts), config.CHECK_INTERVAL_MINUTES)
 
-        # Start optional cloud health server if PORT is defined (Hugging Face, Render, Koyeb)
-        if os.getenv("PORT") or os.getenv("ENABLE_HEALTH_SERVER", "false").lower() in ("true", "1", "yes"):
+        # Start optional cloud health server and keep-warm pinger for cloud platforms (Render, Hugging Face, Koyeb)
+        if os.getenv("PORT") or os.getenv("RENDER") or os.getenv("ENABLE_HEALTH_SERVER", "false").lower() in ("true", "1", "yes"):
             asyncio.create_task(self.start_health_server())
+            asyncio.create_task(self.start_keep_alive_pinger())
+
+    async def start_keep_alive_pinger(self):
+        """Pings the public health endpoint every 9 minutes to prevent Render free tier from sleeping."""
+        base_url = (
+            os.getenv("KEEP_WARM_URL")
+            or os.getenv("RENDER_EXTERNAL_URL")
+            or "https://xbot-intelligence.onrender.com"
+        )
+        ping_url = f"{base_url.rstrip('/')}/health"
+        logger.info(f"Keep-warm pinger initialized for {ping_url}")
+
+        # Wait 2 minutes after startup before sending first ping
+        await asyncio.sleep(120)
+
+        while self.running:
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(ping_url, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                        if resp.status == 200:
+                            logger.info(f"🏓 Keep-warm ping to {ping_url} succeeded (200 OK)")
+                        else:
+                            logger.warning(f"Keep-warm ping returned status {resp.status}")
+            except Exception as e:
+                logger.warning(f"Keep-warm ping notice: {e}")
+
+            # Sleep 9 minutes (540s) so Render's 15-minute inactivity shutdown timer never triggers
+            await asyncio.sleep(540)
 
     async def start_health_server(self):
         """Starts minimal HTTP health check server for cloud platforms (Hugging Face, Render, Koyeb)."""

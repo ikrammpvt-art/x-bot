@@ -17,10 +17,50 @@ class TelegramNotifier:
     def is_configured(self) -> bool:
         return bool(self.bot_token and self.chat_id)
 
-    def _split_text(self, text: str, max_length: int = 3800) -> list:
-        """Splits long message into chunks along paragraph boundaries to respect Telegram's 4096 char limit."""
+    @staticmethod
+    def sanitize_and_balance_html(text: str) -> str:
+        """Sanitizes raw AI text for Telegram's strict HTML parser and auto-closes broken tags."""
+        import re
+
+        # 1. Escape stray ampersands not part of standard HTML entities
+        text = re.sub(r'&(?!(?:amp|lt|gt|quot);)', '&amp;', text)
+
+        # 2. Fix malformed <a href=...> without quotes
+        text = re.sub(r'<a\s+href=([^\s\"<>]+)>', r'<a href="\1">', text)
+
+        # 3. Strip any unsupported HTML tags like <p>, </p>, <br>, <div>, etc.
+        text = re.sub(r'</?(?:p|div|span|ul|ol|li|br|h\d)[^>]*>', '\n', text, flags=re.IGNORECASE)
+
+        # 4. Auto-balance and close unclosed Telegram tags
+        tag_names = ['b', 'strong', 'i', 'em', 'u', 'ins', 's', 'strike', 'del', 'code', 'pre', 'a']
+        tokens = re.findall(r'(</?([a-zA-Z]+)(?:\s+[^>]*?)?>)', text)
+        open_stack = []
+        for full_tag, name in tokens:
+            name_lower = name.lower()
+            if name_lower not in tag_names:
+                continue
+            if full_tag.startswith('</'):
+                if open_stack and open_stack[-1] == name_lower:
+                    open_stack.pop()
+                elif name_lower in open_stack:
+                    while open_stack and open_stack[-1] != name_lower:
+                        open_stack.pop()
+                    if open_stack:
+                        open_stack.pop()
+            else:
+                open_stack.append(name_lower)
+
+        for tag in reversed(open_stack):
+            text += f'</{tag}>'
+
+        # Clean multiple blank lines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
+
+    def _split_text(self, text: str, max_length: int = 3500) -> list:
+        """Splits long message into chunks along paragraph boundaries, auto-balancing HTML in each chunk."""
         if len(text) <= max_length:
-            return [text]
+            return [self.sanitize_and_balance_html(text)]
 
         chunks = []
         current_chunk = []
@@ -31,7 +71,8 @@ class TelegramNotifier:
             p_len = len(p) + 2
             if current_len + p_len > max_length:
                 if current_chunk:
-                    chunks.append("\n\n".join(current_chunk))
+                    chunk_text = "\n\n".join(current_chunk)
+                    chunks.append(self.sanitize_and_balance_html(chunk_text))
                     current_chunk = [p]
                     current_len = len(p)
                 else:
@@ -40,7 +81,7 @@ class TelegramNotifier:
                     sub_len = 0
                     for line in lines:
                         if sub_len + len(line) + 1 > max_length:
-                            chunks.append("\n".join(sub_chunk))
+                            chunks.append(self.sanitize_and_balance_html("\n".join(sub_chunk)))
                             sub_chunk = [line]
                             sub_len = len(line)
                         else:
@@ -54,9 +95,11 @@ class TelegramNotifier:
                 current_len += p_len
 
         if current_chunk:
-            chunks.append("\n\n".join(current_chunk))
+            chunk_text = "\n\n".join(current_chunk)
+            chunks.append(self.sanitize_and_balance_html(chunk_text))
 
         return chunks
+
 
     async def _send_single(self, text: str, disable_preview: bool = True) -> bool:
         import re
