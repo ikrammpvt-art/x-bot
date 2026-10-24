@@ -167,10 +167,11 @@ class XBotMonitor:
             logger.info("All accounts already initialized.")
             return
 
-        logger.info(f"Establishing baseline for {len(uninit)} uninitialized accounts via batch search...")
+        logger.info(f"Establishing baseline for {len(uninit)} uninitialized accounts...")
         try:
-            tweets = await self.twitter.search_tweets_batch(uninit, chunk_size=12, count_per_chunk=10)
-            for tweet in tweets:
+            # 1. Seed from following timeline
+            timeline_tweets = await self.twitter.fetch_following_timeline(count=100)
+            for tweet in timeline_tweets:
                 database.mark_tweet_seen(
                     tweet_id=tweet["id"],
                     username=tweet["screen_name"],
@@ -178,9 +179,24 @@ class XBotMonitor:
                     tweet_url=tweet["url"],
                     created_at=tweet["created_at"]
                 )
+
+            # 2. Seed from batch search if available
+            try:
+                batch_tweets = await self.twitter.search_tweets_batch(uninit, chunk_size=12, count_per_chunk=10)
+                for tweet in batch_tweets:
+                    database.mark_tweet_seen(
+                        tweet_id=tweet["id"],
+                        username=tweet["screen_name"],
+                        tweet_text=tweet["text"],
+                        tweet_url=tweet["url"],
+                        created_at=tweet["created_at"]
+                    )
+            except Exception:
+                pass
+
             for acc in uninit:
                 database.set_account_initialized(acc)
-            logger.info(f"Account baselines established ({len(tweets)} tweets recorded across accounts).")
+            logger.info(f"Account baselines established ({len(timeline_tweets)} baseline tweets recorded).")
         except Exception as e:
             logger.error(f"Error seeding baselines: {e}")
 

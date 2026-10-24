@@ -125,6 +125,77 @@ def apply_patch():
         else:
             print("client.py is already up to date or already patched.")
 
+    # Patch 4: guest/user.py (prevent KeyError: 'urls' on users without description URLs)
+    guest_user_file = twikit_dir / "guest" / "user.py"
+    if guest_user_file.exists():
+        content = guest_user_file.read_text(encoding="utf-8")
+        patched = False
+        target_urls = "self.description_urls: list = legacy['entities']['description']['urls']"
+        safe_urls = "self.description_urls: list = legacy.get('entities', {}).get('description', {}).get('urls', []) if isinstance(legacy.get('entities'), dict) else []"
+        if target_urls in content:
+            content = content.replace(target_urls, safe_urls)
+            patched = True
+
+        target_url = "self.urls: list = legacy['entities'].get('url', {}).get('urls')"
+        safe_url = "self.urls: list = legacy.get('entities', {}).get('url', {}).get('urls') if isinstance(legacy.get('entities'), dict) else None"
+        if target_url in content:
+            content = content.replace(target_url, safe_url)
+            patched = True
+
+        if patched:
+            guest_user_file.write_text(content, encoding="utf-8")
+            print("Successfully patched twikit/guest/user.py for safe url handling")
+        else:
+            print("guest/user.py is already up to date.")
+
+    # Patch 5: user.py entities safety
+    if user_file.exists():
+        content = user_file.read_text(encoding="utf-8")
+        patched = False
+        target_u1 = "self.description_urls: list = legacy['entities'].get('description', {}).get('urls', [])"
+        safe_u1 = "entities = legacy.get('entities') or {}\n        self.description_urls: list = entities.get('description', {}).get('urls', []) if isinstance(entities.get('description'), dict) else []"
+        if target_u1 in content:
+            content = content.replace(target_u1, safe_u1)
+            patched = True
+
+        target_u2 = "self.urls: list = legacy['entities'].get('url', {}).get('urls')"
+        safe_u2 = "self.urls: list = entities.get('url', {}).get('urls') if isinstance(entities.get('url'), dict) else None"
+        if target_u2 in content:
+            content = content.replace(target_u2, safe_u2)
+            patched = True
+
+        if patched:
+            user_file.write_text(content, encoding="utf-8")
+            print("Successfully patched twikit/user.py for safe entities handling")
+
+    # Patch 6: client/client.py - wrap get_timeline and get_latest_timeline item loops in try/except
+    # so a single malformed ad/promoted tweet never crashes the entire timeline
+    if client_file.exists():
+        content = client_file.read_text(encoding="utf-8")
+        old_loop = """        for item in items:
+            if 'itemContent' not in item['content']:
+                continue
+            tweet = tweet_from_data(self, item)
+            if tweet is None:
+                continue
+            results.append(tweet)"""
+
+        safe_loop = """        for item in items:
+            if 'content' not in item or 'itemContent' not in item['content']:
+                continue
+            try:
+                tweet = tweet_from_data(self, item)
+                if tweet is not None:
+                    results.append(tweet)
+            except Exception:
+                continue"""
+
+        if old_loop in content:
+            content = content.replace(old_loop, safe_loop)
+            client_file.write_text(content, encoding="utf-8")
+            print("Successfully patched twikit/client/client.py timeline loops for crash-immunity")
+        else:
+            print("timeline loops in client.py are already patched.")
 
     print("twikit patch verification complete.")
 

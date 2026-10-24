@@ -167,7 +167,10 @@ class TwitterFetcher:
                 return []
 
         all_parsed = []
+        search_available = True
         for i in range(0, len(usernames), chunk_size):
+            if not search_available:
+                break
             chunk = usernames[i:i + chunk_size]
             query = " OR ".join([f"from:{u}" for u in chunk])
             logger.info(f"Querying batch of {len(chunk)} accounts ({chunk[0]}...)...")
@@ -175,6 +178,10 @@ class TwitterFetcher:
             try:
                 results = await self.client.search_tweet(query, "Latest", count=count_per_chunk)
             except TwitterException as te:
+                if "404" in str(te):
+                    logger.info("Twitter SearchTimeline is not available on datacenter IP (404). Following timeline feed is active as primary ingestion.")
+                    search_available = False
+                    break
                 logger.error(f"Search API error on batch: {te}")
                 continue
             except Exception as e:
@@ -182,6 +189,76 @@ class TwitterFetcher:
                 continue
 
             for tweet in results:
+                try:
+                    tweet_id = str(tweet.id)
+                    is_retweet = getattr(tweet, "retweeted_tweet", None) is not None
+                    is_reply = getattr(tweet, "in_reply_to", None) is not None
+                    is_quote = getattr(tweet, "is_quote_status", False)
+
+                    if is_retweet and not config.INCLUDE_RETWEETS:
+                        continue
+                    if is_reply and not config.INCLUDE_REPLIES:
+                        continue
+
+                    screen_name = "unknown"
+                    author_name = "User"
+                    if hasattr(tweet, "user") and tweet.user:
+                        screen_name = getattr(tweet.user, "screen_name", "unknown")
+                        author_name = getattr(tweet.user, "name", screen_name)
+
+                    tweet_text = getattr(tweet, "text", "") or getattr(tweet, "full_text", "")
+                    tweet_url = f"https://x.com/{screen_name}/status/{tweet_id}"
+                    created_at = str(getattr(tweet, "created_at", ""))
+
+                    all_parsed.append({
+                        "id": tweet_id,
+                        "screen_name": screen_name,
+                        "author_name": author_name,
+                        "text": tweet_text,
+                        "url": tweet_url,
+                        "created_at": created_at,
+                        "is_retweet": is_retweet,
+                        "is_quote": is_quote,
+                        "is_reply": is_reply
+                    })
+                except Exception:
+                    continue
+
+            await self.polite_delay(1.5, 3.0)
+
+        return all_parsed
+
+    async def polite_delay(self, min_seconds: float = 2.0, max_seconds: float = 4.0):
+        """Introduces a small random delay between account queries to avoid bot detection."""
+        delay = random.uniform(min_seconds, max_seconds)
+        await asyncio.sleep(delay)
+
+    async def fetch_following_timeline(self, count: int = 70) -> List[Dict[str, Any]]:
+        """
+        Fetches the chronological Following feed from the authenticated Twitter account.
+        Ensures that any account the user follows on X is captured in real-time,
+        even if not yet added to the watchlist.
+        """
+        if not self.is_authenticated:
+            success = await self.authenticate()
+            if not success:
+                logger.error("Cannot fetch following timeline: Not authenticated.")
+                return []
+
+        timeline = []
+        try:
+            timeline = await self.client.get_latest_timeline(count=count)
+        except Exception as e:
+            logger.warning(f"get_latest_timeline notice ({e}), trying fallback get_timeline...")
+            try:
+                timeline = await self.client.get_timeline(count=count)
+            except Exception as e2:
+                logger.error(f"Both timeline endpoints failed: {e2}")
+                return []
+
+        parsed = []
+        for tweet in timeline:
+            try:
                 tweet_id = str(tweet.id)
                 is_retweet = getattr(tweet, "retweeted_tweet", None) is not None
                 is_reply = getattr(tweet, "in_reply_to", None) is not None
@@ -202,7 +279,7 @@ class TwitterFetcher:
                 tweet_url = f"https://x.com/{screen_name}/status/{tweet_id}"
                 created_at = str(getattr(tweet, "created_at", ""))
 
-                all_parsed.append({
+                parsed.append({
                     "id": tweet_id,
                     "screen_name": screen_name,
                     "author_name": author_name,
@@ -213,67 +290,9 @@ class TwitterFetcher:
                     "is_quote": is_quote,
                     "is_reply": is_reply
                 })
-
-            await self.polite_delay(1.5, 3.0)
-
-        return all_parsed
-
-    async def polite_delay(self, min_seconds: float = 2.0, max_seconds: float = 4.0):
-        """Introduces a small random delay between account queries to avoid bot detection."""
-        delay = random.uniform(min_seconds, max_seconds)
-        await asyncio.sleep(delay)
-
-    async def fetch_following_timeline(self, count: int = 50) -> List[Dict[str, Any]]:
-        """
-        Fetches the chronological Following feed from the authenticated Twitter account.
-        Ensures that any account the user follows on X is captured in real-time,
-        even if not yet added to the watchlist.
-        """
-        if not self.is_authenticated:
-            success = await self.authenticate()
-            if not success:
-                logger.error("Cannot fetch following timeline: Not authenticated.")
-                return []
-
-        try:
-            timeline = await self.client.get_latest_timeline(count=count)
-        except Exception as e:
-            logger.warning(f"Error fetching latest timeline: {e}")
-            return []
-
-        parsed = []
-        for tweet in timeline:
-            tweet_id = str(tweet.id)
-            is_retweet = getattr(tweet, "retweeted_tweet", None) is not None
-            is_reply = getattr(tweet, "in_reply_to", None) is not None
-            is_quote = getattr(tweet, "is_quote_status", False)
-
-            if is_retweet and not config.INCLUDE_RETWEETS:
+            except Exception as pe:
+                logger.debug(f"Skipped timeline item due to parse error: {pe}")
                 continue
-            if is_reply and not config.INCLUDE_REPLIES:
-                continue
-
-            screen_name = "unknown"
-            author_name = "User"
-            if hasattr(tweet, "user") and tweet.user:
-                screen_name = getattr(tweet.user, "screen_name", "unknown")
-                author_name = getattr(tweet.user, "name", screen_name)
-
-            tweet_text = getattr(tweet, "text", "") or getattr(tweet, "full_text", "")
-            tweet_url = f"https://x.com/{screen_name}/status/{tweet_id}"
-            created_at = str(getattr(tweet, "created_at", ""))
-
-            parsed.append({
-                "id": tweet_id,
-                "screen_name": screen_name,
-                "author_name": author_name,
-                "text": tweet_text,
-                "url": tweet_url,
-                "created_at": created_at,
-                "is_retweet": is_retweet,
-                "is_quote": is_quote,
-                "is_reply": is_reply
-            })
 
         return parsed
 
