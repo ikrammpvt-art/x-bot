@@ -258,6 +258,8 @@ class TelegramCommandHandler:
             IST = timezone(timedelta(hours=5, minutes=30))
             start_str = format_clock_ist(cutoff.astimezone(IST))
             end_str = format_clock_ist(now.astimezone(IST))
+            if start_str == end_str:
+                start_str = format_clock_ist((now - timedelta(minutes=max(15, int(hours * 60)))).astimezone(IST))
 
             digest = await self.monitor.explainer.generate_roundup(recent, start_str, end_str)
             sent = await self.monitor.telegram.send_message(digest, disable_preview=True)

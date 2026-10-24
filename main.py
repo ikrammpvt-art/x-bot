@@ -5,6 +5,7 @@ import signal
 import sys
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
+from typing import Optional
 
 import config
 import database
@@ -70,6 +71,7 @@ class XBotMonitor:
         self.listener = None
         self.explainer = None
         self._scan_lock = asyncio.Lock()
+        self.last_cycle_end_ist: Optional[datetime] = None
 
     def validate_environment(self) -> bool:
         """Validates configuration before starting."""
@@ -307,7 +309,16 @@ class XBotMonitor:
         async with self._scan_lock:
             # Refresh accounts list from database
             self.accounts = database.get_all_monitored_accounts()
-            cycle_start_ist = now_ist()
+            now_dt = now_ist()
+
+            # Default window start: previous cycle completion or CHECK_INTERVAL_MINUTES ago
+            default_start = now_dt - timedelta(minutes=config.CHECK_INTERVAL_MINUTES)
+            cycle_start_ist = self.last_cycle_end_ist or default_start
+
+            # Cap if previous cycle was excessively old (e.g. server restart)
+            if (now_dt - cycle_start_ist).total_seconds() > 86400:
+                cycle_start_ist = now_dt - timedelta(hours=2)
+
             start_str = format_clock_ist(cycle_start_ist)
 
             logger.info(f"=== Starting dual-source monitoring cycle for {len(self.accounts)} accounts at {start_str} IST (Manual={manual_trigger}) ===")
@@ -340,7 +351,28 @@ class XBotMonitor:
                     cycle_new_tweets.append(tweet)
 
             cycle_end_ist = now_ist()
+
+            # Expand window start if any tweet was published earlier
+            tweet_dts = []
+            for tweet in cycle_new_tweets:
+                try:
+                    t_dt = parsedate_to_datetime(tweet.get("created_at", "")).astimezone(IST)
+                    tweet_dts.append(t_dt)
+                except Exception:
+                    pass
+
+            if tweet_dts:
+                earliest_tweet_dt = min(tweet_dts)
+                if earliest_tweet_dt < cycle_start_ist:
+                    cycle_start_ist = earliest_tweet_dt
+
+            start_str = format_clock_ist(cycle_start_ist)
             end_str = format_clock_ist(cycle_end_ist)
+
+            # Guaranteed fix for timing glitch: start_str and end_str must NEVER be identical
+            if start_str == end_str:
+                interval_mins = max(config.CHECK_INTERVAL_MINUTES, 15)
+                start_str = format_clock_ist(cycle_end_ist - timedelta(minutes=interval_mins))
 
             if cycle_new_tweets:
                 logger.info(f"📰 Compiling X Roundup for {len(cycle_new_tweets)} new tweets from {start_str} to {end_str} IST...")
@@ -379,6 +411,7 @@ class XBotMonitor:
                 if manual_trigger:
                     await self.telegram.send_message(f"ℹ️ <b>Manual Check:</b> {msg}")
 
+            self.last_cycle_end_ist = cycle_end_ist
             logger.info(f"=== Cycle finished. Next check in {config.CHECK_INTERVAL_MINUTES} minutes. ===")
 
     async def start(self):
