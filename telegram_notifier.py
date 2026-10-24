@@ -59,6 +59,7 @@ class TelegramNotifier:
         return chunks
 
     async def _send_single(self, text: str, disable_preview: bool = True) -> bool:
+        import re
         endpoint = f"{self.api_url}/sendMessage"
         payload = {
             "chat_id": self.chat_id,
@@ -72,6 +73,21 @@ class TelegramNotifier:
                     data = await resp.json()
                     if resp.status == 200 and data.get("ok"):
                         return True
+                    elif "can't parse entities" in str(data.get("description", "")).lower():
+                        logger.warning("Telegram HTML entity parsing failed, retrying with clean plain text...")
+                        # Strip HTML tags and send cleanly as plain text so message is NEVER lost
+                        clean_text = re.sub(r"<[^>]+>", "", text)
+                        clean_payload = {
+                            "chat_id": self.chat_id,
+                            "text": clean_text,
+                            "disable_web_page_preview": disable_preview
+                        }
+                        async with session.post(endpoint, json=clean_payload, timeout=15) as resp2:
+                            data2 = await resp2.json()
+                            if resp2.status == 200 and data2.get("ok"):
+                                return True
+                            logger.error(f"Plain text fallback also failed: {data2.get('description')}")
+                            return False
                     else:
                         logger.error(f"Telegram API error ({resp.status}): {data.get('description')}")
                         return False

@@ -88,7 +88,7 @@ Tweet text:
 Please provide a Grok-style plain English explanation and background context for this tweet."""
 
         try:
-            response = self.client.models.generate_content(
+            response = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=f"{SYSTEM_PROMPT}\n\n{user_content}"
             )
@@ -119,7 +119,8 @@ Please provide a Grok-style plain English explanation and background context for
         )
 
         try:
-            response = self.client.models.generate_content(
+            import asyncio
+            response = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=prompt
             )
@@ -138,23 +139,24 @@ Please provide a Grok-style plain English explanation and background context for
             return "\n".join(lines)
 
     async def generate_roundup(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str) -> str:
+        import asyncio
         if not tweets:
             return f"<b>X roundup, {start_time_ist} to {end_time_ist} IST.</b>\nNo new posts detected."
 
-        # If 25 or fewer tweets, single batch ensures full context
-        if len(tweets) <= 25:
+        # If 30 or fewer tweets, single batch ensures full cohesive narrative
+        if len(tweets) <= 30:
             return await self._generate_single_batch(tweets, start_time_ist, end_time_ist, is_first=True)
 
-        # For large volumes (multi-hour windows), chunk in batches of 20-25 so NO tweet is ever dropped
-        chunk_size = 25
-        results = []
-        for i in range(0, len(tweets), chunk_size):
-            chunk = tweets[i:i + chunk_size]
-            is_first = (i == 0)
-            batch_result = await self._generate_single_batch(chunk, start_time_ist, end_time_ist, is_first=is_first)
-            results.append(batch_result)
-
+        # For large volumes (multi-hour windows), chunk and run parallel with asyncio.gather
+        chunk_size = 30
+        chunks = [tweets[i:i + chunk_size] for i in range(0, len(tweets), chunk_size)]
+        tasks = [
+            self._generate_single_batch(chunk, start_time_ist, end_time_ist, is_first=(idx == 0))
+            for idx, chunk in enumerate(chunks)
+        ]
+        results = await asyncio.gather(*tasks)
         return "\n\n".join(results)
+
 
 
 class GroqExplainer(BaseExplainer):
