@@ -55,6 +55,13 @@ def apply_patch():
             )
             patched = True
 
+        if 'def __init__(self):\n        self.home_page_response = None\n        self.key = None' not in content:
+            content = content.replace(
+                'def __init__(self):\n        self.home_page_response = None',
+                'def __init__(self):\n        self.home_page_response = None\n        self.key = None\n        self.key_bytes = None\n        self.animation_key = None'
+            )
+            patched = True
+
         if patched:
             trans_file.write_text(content, encoding="utf-8")
             print("Successfully patched twikit/x_client_transaction/transaction.py")
@@ -120,11 +127,24 @@ def apply_patch():
             else:
                 print(f"{u_file.name} User.__init__ is already up to date.")
 
-    # Patch 6: client/client.py - wrap get_timeline and get_latest_timeline item loops in try/except
-    # so a single malformed ad/promoted tweet never crashes the entire timeline
+    # Patch 3: client/client.py - resilience against transaction ID failures on datacenter IPs
     client_file = twikit_dir / "client" / "client.py"
     if client_file.exists():
         content = client_file.read_text(encoding="utf-8")
+
+        # 3a. Wrap init call
+        content = content.replace(
+            "await self.client_transaction.init(self.http, ct_headers)",
+            "try:\n                await self.client_transaction.init(self.http, ct_headers)\n            except Exception:\n                pass"
+        )
+
+        # 3b. Wrap transaction ID generation
+        old_tid = "tid = self.client_transaction.generate_transaction_id(method=method, path=urlparse(url).path)\n        headers['X-Client-Transaction-Id'] = tid"
+        safe_tid = "try:\n            tid = self.client_transaction.generate_transaction_id(method=method, path=urlparse(url).path)\n            if tid:\n                headers['X-Client-Transaction-Id'] = tid\n        except Exception:\n            pass"
+        if old_tid in content:
+            content = content.replace(old_tid, safe_tid)
+
+        # 3c. Wrap get_timeline and get_latest_timeline loops for crash-immunity
         old_loop = """        for item in items:
             if 'itemContent' not in item['content']:
                 continue
@@ -145,10 +165,9 @@ def apply_patch():
 
         if old_loop in content:
             content = content.replace(old_loop, safe_loop)
-            client_file.write_text(content, encoding="utf-8")
-            print("Successfully patched twikit/client/client.py timeline loops for crash-immunity")
-        else:
-            print("timeline loops in client.py are already patched.")
+
+        client_file.write_text(content, encoding="utf-8")
+        print("Successfully patched twikit/client/client.py (transaction resilience + loop safety)")
 
     print("twikit patch verification complete.")
 
