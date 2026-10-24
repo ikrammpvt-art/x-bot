@@ -106,6 +106,7 @@ def apply_patch():
 
     init_pattern = re.compile(r"    def __init__\(self,.*?\n(?=\s+@property|\s+async def|\s+def [a-zA-Z_])", re.DOTALL)
 
+    user_file = twikit_dir / "user.py"
     for u_file in [user_file, twikit_dir / "guest" / "user.py"]:
         if u_file.exists():
             c = u_file.read_text(encoding="utf-8")
@@ -121,6 +122,7 @@ def apply_patch():
 
     # Patch 6: client/client.py - wrap get_timeline and get_latest_timeline item loops in try/except
     # so a single malformed ad/promoted tweet never crashes the entire timeline
+    client_file = twikit_dir / "client" / "client.py"
     if client_file.exists():
         content = client_file.read_text(encoding="utf-8")
         old_loop = """        for item in items:
