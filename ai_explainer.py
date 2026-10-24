@@ -97,7 +97,7 @@ Please provide a Grok-style plain English explanation and background context for
             logger.error(f"Gemini generation error: {e}")
             return f"💡 <b>Plain English:</b> {text}\n\n⚠️ <i>(AI explanation unavailable: {str(e)[:100]})</i>"
 
-    async def generate_roundup(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str) -> str:
+    async def _generate_single_batch(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str, is_first: bool = True) -> str:
         tweet_items = []
         for i, t in enumerate(tweets, 1):
             handle = t.get("screen_name", "user")
@@ -106,11 +106,16 @@ Please provide a Grok-style plain English explanation and background context for
             text = t.get("text", "").replace("\n", " ")
             tweet_items.append(f"{i}. Author: @{handle} | URL: {url} | Time: {time_ist} | Text: {text}")
 
+        instruction = ""
+        if not is_first:
+            instruction = "\nNote: This is a continuation section. Do NOT repeat the main 'X roundup... The big story is...' headline. Output directly with the category headers and entries.\n"
+
         prompt = (
             f"{ROUNDUP_SYSTEM_PROMPT}\n\n"
+            f"{instruction}"
             f"Start Time: {start_time_ist}\n"
             f"End Time: {end_time_ist}\n\n"
-            f"Input Tweets:\n" + "\n".join(tweet_items)
+            f"Input Tweets ({len(tweets)} total - ensure 100% of these are covered):\n" + "\n".join(tweet_items)
         )
 
         try:
@@ -121,7 +126,9 @@ Please provide a Grok-style plain English explanation and background context for
             return response.text.strip()
         except Exception as e:
             logger.error(f"Gemini roundup generation error: {e}")
-            lines = [f"<b>X roundup, {start_time_ist} to {end_time_ist} IST.</b>\n"]
+            lines = []
+            if is_first:
+                lines.append(f"<b>X roundup, {start_time_ist} to {end_time_ist} IST.</b>\n")
             for t in tweets:
                 h = t.get("screen_name", "user")
                 u = t.get("url", f"https://x.com/{h}")
@@ -129,6 +136,25 @@ Please provide a Grok-style plain English explanation and background context for
                 tx = t.get("text", "")[:120]
                 lines.append(f"<a href=\"{u}\">@{h}</a> at {tm}: {tx}...")
             return "\n".join(lines)
+
+    async def generate_roundup(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str) -> str:
+        if not tweets:
+            return f"<b>X roundup, {start_time_ist} to {end_time_ist} IST.</b>\nNo new posts detected."
+
+        # If 25 or fewer tweets, single batch ensures full context
+        if len(tweets) <= 25:
+            return await self._generate_single_batch(tweets, start_time_ist, end_time_ist, is_first=True)
+
+        # For large volumes (multi-hour windows), chunk in batches of 20-25 so NO tweet is ever dropped
+        chunk_size = 25
+        results = []
+        for i in range(0, len(tweets), chunk_size):
+            chunk = tweets[i:i + chunk_size]
+            is_first = (i == 0)
+            batch_result = await self._generate_single_batch(chunk, start_time_ist, end_time_ist, is_first=is_first)
+            results.append(batch_result)
+
+        return "\n\n".join(results)
 
 
 class GroqExplainer(BaseExplainer):

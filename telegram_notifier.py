@@ -17,16 +17,48 @@ class TelegramNotifier:
     def is_configured(self) -> bool:
         return bool(self.bot_token and self.chat_id)
 
-    async def send_message(self, text: str, disable_preview: bool = True) -> bool:
-        """Sends an HTML formatted message to the configured Telegram chat."""
-        if not self.is_configured():
-            logger.error("Telegram is not configured. Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID.")
-            return False
+    def _split_text(self, text: str, max_length: int = 3800) -> list:
+        """Splits long message into chunks along paragraph boundaries to respect Telegram's 4096 char limit."""
+        if len(text) <= max_length:
+            return [text]
 
-        # Telegram message character limit is 4096
-        if len(text) > 4000:
-            text = text[:3990] + "...\n<i>(truncated)</i>"
+        chunks = []
+        current_chunk = []
+        current_len = 0
 
+        paragraphs = text.split("\n\n")
+        for p in paragraphs:
+            p_len = len(p) + 2
+            if current_len + p_len > max_length:
+                if current_chunk:
+                    chunks.append("\n\n".join(current_chunk))
+                    current_chunk = [p]
+                    current_len = len(p)
+                else:
+                    lines = p.split("\n")
+                    sub_chunk = []
+                    sub_len = 0
+                    for line in lines:
+                        if sub_len + len(line) + 1 > max_length:
+                            chunks.append("\n".join(sub_chunk))
+                            sub_chunk = [line]
+                            sub_len = len(line)
+                        else:
+                            sub_chunk.append(line)
+                            sub_len += len(line) + 1
+                    if sub_chunk:
+                        current_chunk = ["\n".join(sub_chunk)]
+                        current_len = len(current_chunk[0])
+            else:
+                current_chunk.append(p)
+                current_len += p_len
+
+        if current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+
+        return chunks
+
+    async def _send_single(self, text: str, disable_preview: bool = True) -> bool:
         endpoint = f"{self.api_url}/sendMessage"
         payload = {
             "chat_id": self.chat_id,
@@ -34,7 +66,6 @@ class TelegramNotifier:
             "parse_mode": "HTML",
             "disable_web_page_preview": disable_preview
         }
-
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(endpoint, json=payload, timeout=15) as resp:
@@ -47,6 +78,30 @@ class TelegramNotifier:
         except Exception as e:
             logger.error(f"Failed to send Telegram message: {e}")
             return False
+
+    async def send_message(self, text: str, disable_preview: bool = True) -> bool:
+        """Sends an HTML formatted message to Telegram, automatically splitting into parts if long."""
+        if not self.is_configured():
+            logger.error("Telegram is not configured. Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID.")
+            return False
+
+        chunks = self._split_text(text, max_length=3800)
+        total = len(chunks)
+        all_ok = True
+
+        for i, chunk in enumerate(chunks, 1):
+            msg = chunk
+            if total > 1:
+                msg = f"<b>[Part {i}/{total}]</b>\n\n{chunk}"
+            ok = await self._send_single(msg, disable_preview)
+            if not ok:
+                all_ok = False
+            if total > 1:
+                import asyncio
+                await asyncio.sleep(0.5)
+
+        return all_ok
+
 
     async def notify_tweet(self, tweet: Dict[str, Any], explanation: str) -> bool:
         """Formats and delivers a new tweet notification with its AI breakdown."""
