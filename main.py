@@ -177,19 +177,29 @@ class XBotMonitor:
             cycle_start_ist = now_ist()
             start_str = format_clock_ist(cycle_start_ist)
 
-            logger.info(f"=== Starting batch search cycle for {len(self.accounts)} accounts at {start_str} IST (Manual={manual_trigger}) ===")
+            logger.info(f"=== Starting dual-source monitoring cycle for {len(self.accounts)} accounts at {start_str} IST (Manual={manual_trigger}) ===")
 
+            all_raw = []
+            # 1. Fetch live Following feed (ensures all followed accounts including macro analysts are captured)
             try:
-                # Queries accounts in batches of 12 using 'from:user1 OR from:user2...'
-                raw_tweets = await self.twitter.search_tweets_batch(self.accounts, chunk_size=12, count_per_chunk=20)
+                timeline_tweets = await self.twitter.fetch_following_timeline(count=60)
+                all_raw.extend(timeline_tweets)
+                logger.info(f"Fetched {len(timeline_tweets)} tweets from Following timeline.")
+            except Exception as e:
+                logger.warning(f"Error fetching following timeline: {e}")
+
+            # 2. Queries watchlist accounts using batch search
+            try:
+                batch_tweets = await self.twitter.search_tweets_batch(self.accounts, chunk_size=8, count_per_chunk=20)
+                all_raw.extend(batch_tweets)
+                logger.info(f"Fetched {len(batch_tweets)} tweets from batch search.")
             except Exception as e:
                 logger.error(f"Error during batch tweet search: {e}", exc_info=True)
-                raw_tweets = []
 
             cycle_new_tweets = []
             seen_in_cycle = set()
 
-            for tweet in raw_tweets:
+            for tweet in all_raw:
                 tid = tweet["id"]
                 if tid not in seen_in_cycle and not database.is_tweet_seen(tid):
                     seen_in_cycle.add(tid)

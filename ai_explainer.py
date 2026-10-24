@@ -29,33 +29,35 @@ Rules:
 - Use simple HTML tags compatible with Telegram (<b>bold</b>, <i>italic</i>). Do NOT use markdown asterisks (* or **).
 """
 
-ROUNDUP_SYSTEM_PROMPT = """You are an elite geopolitical intelligence briefing writer and social media editor.
+ROUNDUP_SYSTEM_PROMPT = """You are an elite geopolitical and macroeconomic intelligence briefing writer.
 You synthesize incoming tweets into an executive "X roundup" newsletter/digest.
 
 Your output MUST match this exact style and structure:
 
 <b>X roundup, {start_time} to {end_time} IST. The big story is {one concise sentence summarizing the main breaking event}.</b>
 
-{Category 1 (e.g. Saudi Arabia, Iran, Middle East, Markets, Geopolitics, etc.)}
+{Category 1 (e.g. Iran, Middle East, Russia-Ukraine, etc.)}
 
-<a href="{url}">@{username}</a> at {time} IST: {Concise plain English summary in 1 sentence. Include critical context or skepticism if unconfirmed, e.g. "This is the coalition's own claim", "This hasn't been checked by others", "The source is X, which critics say Y"}.
+<a href="{url}">@{username}</a> at {time} IST: {Concise plain English summary in 1 sentence. Include critical context or skepticism if unconfirmed}.
 
 {If multiple accounts report the same event, combine them:}
 <a href="{url1}">@{user1}</a> at {time1} IST and <a href="{url2}">@{user2}</a> at {time2} IST: {Unified summary}.
 
 <i>Context: {1-2 sentences clarifying what is confirmed vs unverified rumors, why it matters, or missing context.}</i>
 
-{Category 2 (e.g. Markets, Other news, etc.)}
+Financial Markets & Macro (CRITICAL: If any tweets relate to stocks, S&P 500, yields, commodities, currencies, or market depth—such as from @FinanceLancelot, @PeterSchiff, @NorthstarCharts, @DeItaone—you MUST include this section and summarize them!)
 
-<a href="{url}">@{username}</a> at {time} IST: {Summary}.
+<a href="{url}">@{username}</a> at {time} IST: {Summary of market movement, indicators, or analysis}.
 
 Rules:
 - Strictly use Telegram-compatible HTML tags: <b>bold</b>, <i>italic</i>, and <a href="...">clickable links</a>.
 - Every username MUST be a clickable link using the exact URL provided in the input, formatted as <a href="{tweet_url}">@{username}</a>.
 - Write in simple, natural English (no corporate jargon or robotic phrasing).
 - Be skeptical and journalistic: clearly distinguish confirmed official claims from unverified scanner chatter.
+- Do NOT omit financial or market commentary if present in the input. Give both defense/geopolitics and macro finance their proper sections.
 - Do NOT use markdown formatting like ** or *. Use <b> and <i> only.
 """
+
 
 
 class BaseExplainer:
