@@ -61,96 +61,63 @@ def apply_patch():
         else:
             print("transaction.py is already up to date.")
 
-    # Patch 2: user.py
-    user_file = twikit_dir / "user.py"
-    if user_file.exists():
-        content = user_file.read_text(encoding="utf-8")
-        if "user_data['verified_type']" in content:
-            content = content.replace(
-                "verified_type = user_data['verified_type']",
-                "verified_type = user_data.get('verified_type')"
-            )
-            content = content.replace(
-                "is_blue_verified = user_data['is_blue_verified']",
-                "is_blue_verified = user_data.get('is_blue_verified', False)"
-            )
-            user_file.write_text(content, encoding="utf-8")
-            print("Successfully patched twikit/user.py")
-        else:
-            print("user.py is already up to date.")
-
-    # Patch 3: client/client.py (resilience against transaction ID failures on datacenter IPs)
-    client_file = twikit_dir / "client" / "client.py"
-    if client_file.exists():
-        content = client_file.read_text(encoding="utf-8")
-        target_block = """        if not self.client_transaction.home_page_response:
-            cookies_backup = self.get_cookies().copy()
-            ct_headers = {
-                'Accept-Language': f'{self.language},{self.language.split("-")[0]};q=0.9',
-                'Cache-Control': 'no-cache',
-                'Referer': f'https://{DOMAIN}',
-                'User-Agent': self._user_agent
-            }
-            await self.client_transaction.init(self.http, ct_headers)
-            self.set_cookies(cookies_backup, clear_cookies=True)
-
-        tid = self.client_transaction.generate_transaction_id(method=method, path=urlparse(url).path)
-        headers['X-Client-Transaction-Id'] = tid"""
-
-        resilient_block = """        if not self.client_transaction.home_page_response:
-            cookies_backup = self.get_cookies().copy()
-            ct_headers = {
-                'Accept-Language': f'{self.language},{self.language.split("-")[0]};q=0.9',
-                'Cache-Control': 'no-cache',
-                'Referer': f'https://{DOMAIN}',
-                'User-Agent': self._user_agent
-            }
-            try:
-                await self.client_transaction.init(self.http, ct_headers)
-            except Exception:
-                pass
-            self.set_cookies(cookies_backup, clear_cookies=True)
-
-        try:
-            tid = self.client_transaction.generate_transaction_id(method=method, path=urlparse(url).path)
-            if tid:
-                headers['X-Client-Transaction-Id'] = tid
-        except Exception:
-            pass"""
-
-        if target_block in content:
-            content = content.replace(target_block, resilient_block)
-            client_file.write_text(content, encoding="utf-8")
-            print("Successfully patched twikit/client/client.py for transaction ID resilience")
-        else:
-            print("client.py is already up to date or already patched.")
-
-    # Patch 4 & 5: user.py and guest/user.py (prevent KeyError: 'urls' and NameError: 'entities' on all platforms)
+    # Patch 2: Complete bulletproof User.__init__ in user.py and guest/user.py
     import re
-    def patch_user_urls(file_path):
-        if not file_path.exists():
-            return
-        c = file_path.read_text(encoding="utf-8")
-        if "desc_ent = entities.get('description')" in c:
-            print(f"{file_path.name} is already patched for safe URLs.")
-            return
+    safe_user_init = """    def __init__(self, client, data: dict) -> None:
+        self._client = client
+        legacy = data.get('legacy') or {}
 
-        safe_block = """entities = legacy.get('entities') if isinstance(legacy.get('entities'), dict) else {}
+        self.id: str = str(data.get('rest_id', ''))
+        self.created_at: str = legacy.get('created_at', '')
+        self.name: str = legacy.get('name', 'User')
+        self.screen_name: str = legacy.get('screen_name', 'unknown')
+        self.profile_image_url: str = legacy.get('profile_image_url_https', '')
+        self.profile_banner_url: str = legacy.get('profile_banner_url')
+        self.url: str = legacy.get('url')
+        self.location: str = legacy.get('location', '')
+        self.description: str = legacy.get('description', '')
+        entities = legacy.get('entities') if isinstance(legacy.get('entities'), dict) else {}
         desc_ent = entities.get('description') if isinstance(entities.get('description'), dict) else {}
         self.description_urls: list = desc_ent.get('urls', []) if isinstance(desc_ent.get('urls'), list) else []
         url_ent = entities.get('url') if isinstance(entities.get('url'), dict) else {}
-        self.urls: list = url_ent.get('urls') if isinstance(url_ent.get('urls'), list) else None"""
+        self.urls: list = url_ent.get('urls') if isinstance(url_ent.get('urls'), list) else None
+        self.pinned_tweet_ids: list[str] = legacy.get('pinned_tweet_ids_str', [])
+        self.is_blue_verified: bool = data.get('is_blue_verified', False)
+        self.verified: bool = legacy.get('verified', False)
+        self.possibly_sensitive: bool = legacy.get('possibly_sensitive', False)
+        self.can_dm: bool = legacy.get('can_dm', False)
+        self.can_media_tag: bool = legacy.get('can_media_tag', False)
+        self.want_retweets: bool = legacy.get('want_retweets', False)
+        self.default_profile: bool = legacy.get('default_profile', False)
+        self.default_profile_image: bool = legacy.get('default_profile_image', False)
+        self.has_custom_timelines: bool = legacy.get('has_custom_timelines', False)
+        self.followers_count: int = legacy.get('followers_count', 0)
+        self.fast_followers_count: int = legacy.get('fast_followers_count', 0)
+        self.normal_followers_count: int = legacy.get('normal_followers_count', 0)
+        self.following_count: int = legacy.get('friends_count', 0)
+        self.favourites_count: int = legacy.get('favourites_count', 0)
+        self.listed_count: int = legacy.get('listed_count', 0)
+        self.media_count = legacy.get('media_count', 0)
+        self.statuses_count: int = legacy.get('statuses_count', 0)
+        self.is_translator: bool = legacy.get('is_translator', False)
+        self.translator_type: str = legacy.get('translator_type', 'none')
+        self.withheld_in_countries: list[str] = legacy.get('withheld_in_countries', [])
+        self.protected: bool = legacy.get('protected', False)"""
 
-        pattern = r"self\.description_urls:.*?\n\s*self\.urls:.*?(?=\n)"
-        if re.search(pattern, c):
-            c = re.sub(pattern, safe_block, c)
-            file_path.write_text(c, encoding="utf-8")
-            print(f"Successfully patched {file_path.name} for bulletproof URL/entities safety")
-        else:
-            print(f"Could not find url pattern in {file_path.name}")
+    init_pattern = re.compile(r"    def __init__\(self,.*?\n(?=\s+@property|\s+async def|\s+def [a-zA-Z_])", re.DOTALL)
 
-    patch_user_urls(user_file)
-    patch_user_urls(twikit_dir / "guest" / "user.py")
+    for u_file in [user_file, twikit_dir / "guest" / "user.py"]:
+        if u_file.exists():
+            c = u_file.read_text(encoding="utf-8")
+            if "self.pinned_tweet_ids: list[str] = legacy.get('pinned_tweet_ids_str', [])" not in c:
+                new_c, cnt = init_pattern.subn(safe_user_init + "\n\n", c)
+                if cnt > 0:
+                    u_file.write_text(new_c, encoding="utf-8")
+                    print(f"Successfully applied bulletproof User.__init__ to {u_file.name}")
+                else:
+                    print(f"Pattern did not match in {u_file.name}")
+            else:
+                print(f"{u_file.name} User.__init__ is already up to date.")
 
     # Patch 6: client/client.py - wrap get_timeline and get_latest_timeline item loops in try/except
     # so a single malformed ad/promoted tweet never crashes the entire timeline
