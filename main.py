@@ -154,19 +154,38 @@ class XBotMonitor:
 
                 raw_resp, _ = await self.twitter.client.gql.home_latest_timeline(20, None, None)
                 from twikit.utils import find_dict
+                from twikit.tweet import tweet_from_data
                 entries = find_dict(raw_resp, "entries", find_one=True)
-                entry_count = len(entries[0]) if entries else 0
+                items = entries[0] if entries else []
+
+                item_diagnostics = []
+                for idx, item in enumerate(items[:15]):
+                    has_content = "content" in item
+                    has_item_content = "itemContent" in item.get("content", {})
+                    entry_type = item.get("content", {}).get("entryType", "unknown")
+                    err = None
+                    tweet_obj = None
+                    try:
+                        tweet_obj = tweet_from_data(self.twitter.client, item)
+                    except Exception as ex:
+                        import traceback
+                        err = f"{type(ex).__name__}: {ex}\n{traceback.format_exc()}"
+                    item_diagnostics.append({
+                        "idx": idx,
+                        "entryType": entry_type,
+                        "has_content": has_content,
+                        "has_item_content": has_item_content,
+                        "tweet_created": tweet_obj is not None,
+                        "error": err
+                    })
 
                 parsed = await self.twitter.fetch_following_timeline(count=20)
 
                 return web.json_response({
                     "authenticated": auth,
-                    "raw_response_keys": list(raw_resp.keys()) if isinstance(raw_resp, dict) else str(type(raw_resp)),
-                    "has_errors": "errors" in raw_resp if isinstance(raw_resp, dict) else False,
-                    "errors": raw_resp.get("errors") if isinstance(raw_resp, dict) else None,
-                    "entries_count": entry_count,
+                    "entries_count": len(items),
                     "parsed_tweets_count": len(parsed),
-                    "sample": parsed[0] if parsed else None
+                    "diagnostics": item_diagnostics
                 })
             except Exception as e:
                 import traceback
