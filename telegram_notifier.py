@@ -159,6 +159,9 @@ class TelegramNotifier:
                 import asyncio
                 await asyncio.sleep(0.5)
 
+        if all_ok:
+            logger.info(f"Successfully delivered {total} message chunk(s) to Telegram chat {self.chat_id}.")
+
         return all_ok
 
 

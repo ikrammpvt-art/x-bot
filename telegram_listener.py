@@ -260,7 +260,11 @@ class TelegramCommandHandler:
             end_str = format_clock_ist(now.astimezone(IST))
 
             digest = await self.monitor.explainer.generate_roundup(recent, start_str, end_str)
-            await self.monitor.telegram.send_message(digest, disable_preview=True)
+            sent = await self.monitor.telegram.send_message(digest, disable_preview=True)
+            if sent:
+                logger.info(f"Successfully generated and delivered {hours:g}h digest ({len(recent)} tweets) to Telegram.")
+            else:
+                logger.warning(f"Failed to deliver {hours:g}h digest to Telegram.")
         except Exception as e:
             logger.error(f"Error generating on-demand digest: {e}", exc_info=True)
             await self.send_reply(chat_id, f"⚠️ Error generating digest: {str(e)[:150]}")
@@ -299,14 +303,15 @@ class TelegramCommandHandler:
                                     logger.info(f"Received Telegram command: {text}")
                                     await self.handle_command(chat_id, text)
                         elif resp.status == 409:
-                            # Conflict: another instance might be polling
+                            logger.warning("Telegram polling 409 Conflict: another instance is polling getUpdates.")
                             await asyncio.sleep(5)
                         else:
+                            logger.warning(f"Telegram getUpdates returned unexpected status {resp.status}")
                             await asyncio.sleep(2)
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    logger.debug(f"Telegram polling loop exception: {e}")
+                    logger.warning(f"Telegram polling loop exception: {e}")
                     await asyncio.sleep(3)
 
     def stop(self):
