@@ -146,9 +146,44 @@ class XBotMonitor:
                 "check_interval_mins": config.CHECK_INTERVAL_MINUTES
             })
 
+        async def handle_debug_twitter(request):
+            try:
+                auth = self.twitter.is_authenticated
+                if not auth:
+                    auth = await self.twitter.authenticate()
+
+                raw_resp, _ = await self.twitter.client.gql.home_latest_timeline(20, None, None)
+                from twikit.utils import find_dict
+                entries = find_dict(raw_resp, "entries", find_one=True)
+                entry_count = len(entries[0]) if entries else 0
+
+                parsed = await self.twitter.fetch_following_timeline(count=20)
+
+                return web.json_response({
+                    "authenticated": auth,
+                    "raw_response_keys": list(raw_resp.keys()) if isinstance(raw_resp, dict) else str(type(raw_resp)),
+                    "has_errors": "errors" in raw_resp if isinstance(raw_resp, dict) else False,
+                    "errors": raw_resp.get("errors") if isinstance(raw_resp, dict) else None,
+                    "entries_count": entry_count,
+                    "parsed_tweets_count": len(parsed),
+                    "sample": parsed[0] if parsed else None
+                })
+            except Exception as e:
+                import traceback
+                return web.json_response({
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                }, status=500)
+
+        async def handle_trigger(request):
+            asyncio.create_task(self.run_cycle(manual_trigger=True))
+            return web.json_response({"status": "cycle_triggered"})
+
         app = web.Application()
         app.router.add_get("/", handle_health)
         app.router.add_get("/health", handle_health)
+        app.router.add_get("/debug-twitter", handle_debug_twitter)
+        app.router.add_get("/trigger", handle_trigger)
 
         runner = web.AppRunner(app)
         await runner.setup()
