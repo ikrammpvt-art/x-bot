@@ -13,12 +13,26 @@ from ai_explainer import get_ai_explainer
 from telegram_notifier import TelegramNotifier
 from telegram_listener import TelegramCommandHandler
 from aiohttp import web
+import collections
+
+log_buffer = collections.deque(maxlen=200)
+
+class BufferHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            log_entry = self.format(record)
+            log_buffer.append(log_entry)
+        except Exception:
+            pass
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
+buffer_handler = BufferHandler()
+buffer_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s", "%Y-%m-%d %H:%M:%S"))
+logging.getLogger().addHandler(buffer_handler)
 logger = logging.getLogger("xbot.main")
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -198,11 +212,31 @@ class XBotMonitor:
             asyncio.create_task(self.run_cycle(manual_trigger=True))
             return web.json_response({"status": "cycle_triggered"})
 
+        async def handle_logs(request):
+            return web.json_response({
+                "count": len(log_buffer),
+                "logs": list(log_buffer)
+            })
+
+        async def handle_trigger_digest(request):
+            hours_str = request.query.get("hours", "2")
+            try:
+                hours = float(hours_str)
+            except ValueError:
+                hours = 2.0
+            if self.listener:
+                asyncio.create_task(self.listener.generate_on_demand_digest(config.TELEGRAM_CHAT_ID, hours=hours, macro_only=False))
+                return web.json_response({"status": f"digest_triggered_for_{hours}h"})
+            else:
+                return web.json_response({"error": "listener_not_ready"}, status=500)
+
         app = web.Application()
         app.router.add_get("/", handle_health)
         app.router.add_get("/health", handle_health)
         app.router.add_get("/debug-twitter", handle_debug_twitter)
         app.router.add_get("/trigger", handle_trigger)
+        app.router.add_get("/trigger-digest", handle_trigger_digest)
+        app.router.add_get("/logs", handle_logs)
 
         runner = web.AppRunner(app)
         await runner.setup()
