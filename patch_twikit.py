@@ -125,48 +125,32 @@ def apply_patch():
         else:
             print("client.py is already up to date or already patched.")
 
-    # Patch 4: guest/user.py (prevent KeyError: 'urls' on users without description URLs)
-    guest_user_file = twikit_dir / "guest" / "user.py"
-    if guest_user_file.exists():
-        content = guest_user_file.read_text(encoding="utf-8")
-        patched = False
-        target_urls = "self.description_urls: list = legacy['entities']['description']['urls']"
-        safe_urls = "self.description_urls: list = legacy.get('entities', {}).get('description', {}).get('urls', []) if isinstance(legacy.get('entities'), dict) else []"
-        if target_urls in content:
-            content = content.replace(target_urls, safe_urls)
-            patched = True
+    # Patch 4 & 5: user.py and guest/user.py (prevent KeyError: 'urls' and NameError: 'entities' on all platforms)
+    import re
+    def patch_user_urls(file_path):
+        if not file_path.exists():
+            return
+        c = file_path.read_text(encoding="utf-8")
+        if "desc_ent = entities.get('description')" in c:
+            print(f"{file_path.name} is already patched for safe URLs.")
+            return
 
-        target_url = "self.urls: list = legacy['entities'].get('url', {}).get('urls')"
-        safe_url = "self.urls: list = legacy.get('entities', {}).get('url', {}).get('urls') if isinstance(legacy.get('entities'), dict) else None"
-        if target_url in content:
-            content = content.replace(target_url, safe_url)
-            patched = True
+        safe_block = """entities = legacy.get('entities') if isinstance(legacy.get('entities'), dict) else {}
+        desc_ent = entities.get('description') if isinstance(entities.get('description'), dict) else {}
+        self.description_urls: list = desc_ent.get('urls', []) if isinstance(desc_ent.get('urls'), list) else []
+        url_ent = entities.get('url') if isinstance(entities.get('url'), dict) else {}
+        self.urls: list = url_ent.get('urls') if isinstance(url_ent.get('urls'), list) else None"""
 
-        if patched:
-            guest_user_file.write_text(content, encoding="utf-8")
-            print("Successfully patched twikit/guest/user.py for safe url handling")
+        pattern = r"self\.description_urls:.*?\n\s*self\.urls:.*?(?=\n)"
+        if re.search(pattern, c):
+            c = re.sub(pattern, safe_block, c)
+            file_path.write_text(c, encoding="utf-8")
+            print(f"Successfully patched {file_path.name} for bulletproof URL/entities safety")
         else:
-            print("guest/user.py is already up to date.")
+            print(f"Could not find url pattern in {file_path.name}")
 
-    # Patch 5: user.py entities safety
-    if user_file.exists():
-        content = user_file.read_text(encoding="utf-8")
-        patched = False
-        target_u1 = "self.description_urls: list = legacy['entities'].get('description', {}).get('urls', [])"
-        safe_u1 = "entities = legacy.get('entities') or {}\n        self.description_urls: list = entities.get('description', {}).get('urls', []) if isinstance(entities.get('description'), dict) else []"
-        if target_u1 in content:
-            content = content.replace(target_u1, safe_u1)
-            patched = True
-
-        target_u2 = "self.urls: list = legacy['entities'].get('url', {}).get('urls')"
-        safe_u2 = "self.urls: list = entities.get('url', {}).get('urls') if isinstance(entities.get('url'), dict) else None"
-        if target_u2 in content:
-            content = content.replace(target_u2, safe_u2)
-            patched = True
-
-        if patched:
-            user_file.write_text(content, encoding="utf-8")
-            print("Successfully patched twikit/user.py for safe entities handling")
+    patch_user_urls(user_file)
+    patch_user_urls(twikit_dir / "guest" / "user.py")
 
     # Patch 6: client/client.py - wrap get_timeline and get_latest_timeline item loops in try/except
     # so a single malformed ad/promoted tweet never crashes the entire timeline
