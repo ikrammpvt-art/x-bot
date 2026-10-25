@@ -116,10 +116,11 @@ class XBotMonitor:
             asyncio.create_task(self.listener.start())
             await self.telegram.send_startup_ping(len(self.accounts), config.CHECK_INTERVAL_MINUTES)
 
-        # Start optional cloud health server and keep-warm pinger for cloud platforms (Render, Hugging Face, Koyeb)
-        if os.getenv("PORT") or os.getenv("RENDER") or os.getenv("ENABLE_HEALTH_SERVER", "false").lower() in ("true", "1", "yes"):
+        # Start optional cloud health server and keep-warm pinger for cloud platforms (Render, Hugging Face, Koyeb, Railway)
+        if os.getenv("PORT") or os.getenv("RENDER") or os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("ENABLE_HEALTH_SERVER", "false").lower() in ("true", "1", "yes"):
             asyncio.create_task(self.start_health_server())
-            asyncio.create_task(self.start_keep_alive_pinger())
+            if os.getenv("RENDER") or os.getenv("KEEP_WARM_URL"):
+                asyncio.create_task(self.start_keep_alive_pinger())
 
     async def start_keep_alive_pinger(self):
         """Pings the public health endpoint every 9 minutes to prevent Render free tier from sleeping."""

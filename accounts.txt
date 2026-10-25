@@ -1,6 +1,7 @@
 # Accounts to monitor (checked every 15 minutes)
 # Managed automatically via Telegram (/add and /remove)
 
+AryJeayBackup
 AsiaLens
 BeamTracker_
 BrinkWire1
@@ -33,6 +34,7 @@ QB_Press
 SoarAtlas
 Souria4Syrians
 SpectreMonitor
+StraitReport
 Techjournalisto
 TheAnantAcharya
 TheObserverLens
@@ -42,11 +44,14 @@ UnicusResearch
 WarMonitors
 War_Mapper
 World_At_War_6
+Xking332
 araghchi
+aravind
 beatsinbrief
 clashreport
 cym27s
 dugalira
+edzitron
 ekwufinance
 gaurav_kochar
 hey_itsmyturn
