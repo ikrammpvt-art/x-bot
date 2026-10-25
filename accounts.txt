@@ -1,4 +1,4 @@
-# Accounts to monitor (checked every 15 minutes)
+# Accounts to monitor (checked every 30 minutes)
 # Managed automatically via Telegram (/add and /remove)
 
 AryJeayBackup

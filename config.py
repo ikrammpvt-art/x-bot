@@ -37,7 +37,7 @@ XAI_API_KEY = os.getenv("XAI_API_KEY", "").strip()
 XAI_MODEL = os.getenv("XAI_MODEL", "grok-2-latest").strip()
 
 # Polling & Behaviour
-CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "15"))
+CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "30"))
 ACCOUNTS_FILE = os.getenv("ACCOUNTS_FILE", "accounts.txt")
 INCLUDE_RETWEETS = os.getenv("INCLUDE_RETWEETS", "false").lower() in ("true", "1", "yes")
 INCLUDE_REPLIES = os.getenv("INCLUDE_REPLIES", "false").lower() in ("true", "1", "yes")

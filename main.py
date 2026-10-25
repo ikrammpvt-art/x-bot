@@ -349,21 +349,17 @@ class XBotMonitor:
                 if tid not in seen_in_cycle and not database.is_tweet_seen(tid):
                     seen_in_cycle.add(tid)
                     tweet["time_ist"] = parse_tweet_time_ist(tweet.get("created_at", ""))
+                    try:
+                        tweet["dt"] = parsedate_to_datetime(tweet.get("created_at", "")).astimezone(IST)
+                    except Exception:
+                        tweet["dt"] = now_dt
                     cycle_new_tweets.append(tweet)
 
             cycle_end_ist = now_ist()
 
             # Expand window start if any tweet was published earlier
-            tweet_dts = []
-            for tweet in cycle_new_tweets:
-                try:
-                    t_dt = parsedate_to_datetime(tweet.get("created_at", "")).astimezone(IST)
-                    tweet_dts.append(t_dt)
-                except Exception:
-                    pass
-
-            if tweet_dts:
-                earliest_tweet_dt = min(tweet_dts)
+            if cycle_new_tweets:
+                earliest_tweet_dt = min(t.get("dt", now_dt) for t in cycle_new_tweets)
                 if earliest_tweet_dt < cycle_start_ist:
                     cycle_start_ist = earliest_tweet_dt
 
@@ -372,14 +368,14 @@ class XBotMonitor:
 
             # Guaranteed fix for timing glitch: start_str and end_str must NEVER be identical
             if start_str == end_str:
-                interval_mins = max(config.CHECK_INTERVAL_MINUTES, 15)
+                interval_mins = max(config.CHECK_INTERVAL_MINUTES, 30)
                 start_str = format_clock_ist(cycle_end_ist - timedelta(minutes=interval_mins))
 
             if cycle_new_tweets:
                 logger.info(f"📰 Compiling X Roundup for {len(cycle_new_tweets)} new tweets from {start_str} to {end_str} IST...")
 
-                # Sort chronological
-                cycle_new_tweets.reverse()
+                # Strict chronological sequence: earliest tweet to latest tweet
+                cycle_new_tweets.sort(key=lambda t: t.get("dt", now_dt))
 
                 # Generate intelligence roundup
                 roundup_html = await self.explainer.generate_roundup(

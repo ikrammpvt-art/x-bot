@@ -111,11 +111,18 @@ CRITICAL INTELLIGENCE & ENTITY ENRICHMENT RULES (MANDATORY):
    • HIMARS / GMLRS [US precision rocket artillery; 70-84 km range, GPS satellite-guided pinpoint strike]
    • Tomahawk [US long-range subsonic cruise missile; 1,600+ km range, 1,000 lb high-explosive warhead]
 
-3. TIMING ACCURACY:
-   - The headline MUST state: <b>X roundup, {start_time} to {end_time} IST. The big story is ...</b>
-   - {start_time} and {end_time} MUST NEVER be identical (e.g. NEVER write '1:56 AM to 1:56 AM IST'). The time window must reflect the true chronological span of the tweets (e.g. '1:41 AM to 1:56 AM IST').
+3. TIMING & CHRONOLOGICAL SEQUENCE:
+   - The headline MUST state: <b>X roundup, {start_time} to {end_time} IST. The big story is {one concise sentence summarizing the main breaking event}.</b>
+   - {start_time} and {end_time} MUST NEVER be identical (e.g. for a 30-minute interval: '1:00 PM to 1:30 PM IST').
+   - Organize all events and tweet items in clear, chronological sequence (order of occurrence from {start_time} to {end_time}).
 
-4. FORMATTING RULES:
+4. SINGLE MESSAGE CONSTRAINT (MANDATORY):
+   - The entire roundup MUST fit into ONE single Telegram message (STRICT LIMIT: UNDER 3,500 CHARACTERS). Do NOT exceed this limit!
+   - Keep each bullet point to 1-2 punchy, information-dense sentences.
+   - Combine multiple accounts covering the exact same event into one line (e.g. <a href="{url1}">@{user1}</a> at {time1} IST and <a href="{url2}">@{user2}</a> at {time2} IST: {unified summary}).
+   - Synthesize all high-signal updates from the 30-minute window cleanly so the entire briefing is delivered in one single screen.
+
+5. FORMATTING RULES:
    - Strictly use Telegram-compatible HTML tags: <b>bold</b>, <i>italic</i>, and <a href="...">clickable links</a>.
    - Every username MUST be a clickable link using the exact URL provided in the input, formatted as <a href="{tweet_url}">@{username}</a>.
    - Write in simple, natural English (no corporate jargon or robotic phrasing).
@@ -138,7 +145,8 @@ def adjust_start_time_if_identical(start_str: str, end_str: str, tweets: List[Di
     try:
         from datetime import datetime, timedelta
         dt = datetime.strptime(end_str.strip(), "%I:%M %p")
-        dt_earlier = dt - timedelta(minutes=15)
+        interval = getattr(config, "CHECK_INTERVAL_MINUTES", 30)
+        dt_earlier = dt - timedelta(minutes=interval)
         h = dt_earlier.strftime("%I").lstrip("0") or "12"
         return f"{h}:{dt_earlier.strftime('%M %p')}"
     except Exception:
@@ -231,12 +239,12 @@ Please provide a Grok-style plain English explanation and background context for
         if not tweets:
             return f"<b>X roundup, {start_time_ist} to {end_time_ist} IST.</b>\nNo new posts detected."
 
-        # If 30 or fewer tweets, single batch ensures full cohesive narrative
-        if len(tweets) <= 30:
+        # Synthesize up to 50 tweets in a single call to guarantee one unified, cohesive message
+        if len(tweets) <= 50:
             return await self._generate_single_batch(tweets, start_time_ist, end_time_ist, is_first=True)
 
-        # For large volumes (multi-hour windows), chunk and run parallel with asyncio.gather
-        chunk_size = 30
+        # For very large volumes (multi-hour windows), chunk and run parallel with asyncio.gather
+        chunk_size = 40
         chunks = [tweets[i:i + chunk_size] for i in range(0, len(tweets), chunk_size)]
         tasks = [
             self._generate_single_batch(chunk, start_time_ist, end_time_ist, is_first=(idx == 0))

@@ -104,7 +104,7 @@ def sync_accounts_to_file():
     accounts = get_all_monitored_accounts()
     accounts_path = BASE_DIR / ACCOUNTS_FILE
     with open(accounts_path, "w", encoding="utf-8") as f:
-        f.write("# Accounts to monitor (checked every 15 minutes)\n")
+        f.write("# Accounts to monitor (checked every 30 minutes)\n")
         f.write("# Managed automatically via Telegram (/add and /remove)\n\n")
         for acc in accounts:
             f.write(f"{acc}\n")
