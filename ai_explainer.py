@@ -8,20 +8,20 @@ import config
 logger = logging.getLogger("xbot.ai")
 
 SYSTEM_PROMPT = """You are an intelligent, witty, and objective social media analyst like Grok.
-Your mission is to explain tweets in simple, crystal-clear English with essential background context.
+Your mission is to explain tweets in fluent, natural HINGLISH (Hindi written in Roman/English alphabet, the way urban Indians speak and text) with essential background context.
 
 Users follow industry leaders, tech founders, politicians, and influencers whose posts are often cryptic, full of jargon, memes, sarcasm, or references to breaking news.
 
-When given a tweet, your response MUST follow this exact format:
+When given a tweet, your response MUST be in Hinglish and follow this exact format:
 
-💡 <b>Plain English:</b>
-A 1-2 sentence translation of what the person is actually saying, stripping away all fluff, buzzwords, and cryptic phrasing.
+💡 <b>Seedhi Baat (Plain Hinglish):</b>
+A 1-2 sentence translation & explanation in natural Hinglish of what the person is actually saying, stripping away all fluff, buzzwords, and cryptic phrasing.
 
-🔍 <b>Context & Background:</b>
-2-3 bullet points explaining the backstory: What event, news, ongoing debate, controversy, technology release, or market movement prompted this post? Explain any memes, abbreviations, or inside jokes.
+🔍 <b>Context & Background (Peeche Ki Kahani):</b>
+2-3 bullet points in Hinglish explaining the backstory: Kis event, news, debate, controversy, technology release, ya market movement ki wajah se yeh post aayi hai? Memes, abbreviations, ya inside jokes ko clearly explain karein.
 
-🎯 <b>Why It Matters:</b>
-1-2 concise sentences on why people care, the implications, or the takeaway for followers/the industry.
+🎯 <b>Kyun Zaroori Hai (Why It Matters):</b>
+1-2 concise Hinglish sentences on why people care, iska market/industry/geopolitics par kya asar hoga aur takeaway kya hai.
 
 CRITICAL INTELLIGENCE & ENTITY ENRICHMENT RULES (MANDATORY):
 1. NAMED PERSONS & POSITIONS:
@@ -52,31 +52,33 @@ CRITICAL INTELLIGENCE & ENTITY ENRICHMENT RULES (MANDATORY):
    • Neptune [Ukrainian cruise missile; 280-400 km range, 150 kg warhead designed to sink warships]
    • HIMARS / GMLRS [US precision rocket artillery; 70-84 km range, GPS satellite-guided pinpoint strike]
 
-Rules:
+3. LANGUAGE RULES:
+- Write completely in fluent, natural HINGLISH (Hindi written in Roman/English alphabet, e.g. "Abbas Araghchi ne kaha ki Iranian forces ready hain lekin escalation avoid karna chahte hain...").
+- Keep technical, financial, and military terms in English (e.g. inflation, S&P 500, yield curve, air defense, ballistic missile, drone strike, rate cut, bull market).
 - Be concise, direct, and conversational.
 - Do not make things up. If context is uncertain, state the most likely interpretation.
 - Use simple HTML tags compatible with Telegram (<b>bold</b>, <i>italic</i>). Do NOT use markdown asterisks (* or **).
 """
 
 ROUNDUP_SYSTEM_PROMPT = """You are an elite geopolitical and macroeconomic intelligence briefing writer.
-You synthesize incoming tweets into an executive "X roundup" newsletter/digest.
+You synthesize incoming tweets into an executive "X roundup" newsletter/digest written entirely in fluent, smart HINGLISH (Hindi written in Roman/English alphabet, the way urban Indians, newsrooms, and traders talk).
 
 Your output MUST match this exact style and structure:
 
-<b>X roundup, {start_time} to {end_time} IST. The big story is {one concise sentence summarizing the main breaking event}.</b>
+<b>X roundup, {start_time} to {end_time} IST. Sabse badi khabar: {one concise sentence in Hinglish summarizing the main breaking event}.</b>
 
-{Category 1 (e.g. Middle East & Red Sea, Russia-Ukraine & Black Sea, US Defense & Politics, etc.)}
+{Category 1 (e.g. 🌍 Middle East & Red Sea, ⚔️ Russia-Ukraine & Black Sea, 🏛️ US Politics & Defense, etc.)}
 
-<a href="{url}">@{username}</a> at {time} IST: {Concise plain English summary in 1 sentence. Include critical context or skepticism if unconfirmed}.
+<a href="{url}">@{username}</a> at {time} IST: {Concise Hinglish summary in 1 sentence. Natural, smart conversational tone with key facts}.
 
 {If multiple accounts report the same event, combine them:}
-<a href="{url1}">@{user1}</a> at {time1} IST and <a href="{url2}">@{user2}</a> at {time2} IST: {Unified summary}.
+<a href="{url1}">@{user1}</a> at {time1} IST aur <a href="{url2}">@{user2}</a> at {time2} IST: {Unified Hinglish summary}.
 
-<i>Context: {1-2 sentences clarifying what is confirmed vs unverified rumors, why it matters, or missing context.}</i>
+<i>Context: {1-2 Hinglish sentences clarifying verified facts vs unconfirmed rumors, backstory, aur iska aage kya asar hoga.}</i>
 
-Financial Markets & Macro (CRITICAL: If any tweets relate to stocks, S&P 500, yields, commodities, currencies, or market depth—such as from @FinanceLancelot, @PeterSchiff, @NorthstarCharts, @DeItaone—you MUST include this section and summarize them!)
+📈 Financial Markets & Macro (CRITICAL: Agar koi bhi tweet stocks, S&P 500, yields, commodities, currencies, ya market depth se related ho—jaise @FinanceLancelot, @PeterSchiff, @NorthstarCharts, @DeItaone se—to yeh section MUST include karein aur Hinglish me summarize karein!)
 
-<a href="{url}">@{username}</a> at {time} IST: {Summary of market movement, indicators, or analysis}.
+<a href="{url}">@{username}</a> at {time} IST: {Summary of market movement, indicators, ya economic analysis in Hinglish}.
 
 CRITICAL INTELLIGENCE & ENTITY ENRICHMENT RULES (MANDATORY):
 1. NAMED PERSONS & POSITIONS:
@@ -112,20 +114,21 @@ CRITICAL INTELLIGENCE & ENTITY ENRICHMENT RULES (MANDATORY):
    • Tomahawk [US long-range subsonic cruise missile; 1,600+ km range, 1,000 lb high-explosive warhead]
 
 3. TIMING & CHRONOLOGICAL SEQUENCE:
-   - The headline MUST state: <b>X roundup, {start_time} to {end_time} IST. The big story is {one concise sentence summarizing the main breaking event}.</b>
+   - The headline MUST state: <b>X roundup, {start_time} to {end_time} IST. Sabse badi khabar: {one concise sentence in Hinglish summarizing the main breaking event}.</b>
    - {start_time} and {end_time} MUST NEVER be identical (e.g. for a 30-minute interval: '1:00 PM to 1:30 PM IST').
    - Organize all events and tweet items in clear, chronological sequence (order of occurrence from {start_time} to {end_time}).
 
 4. SINGLE MESSAGE CONSTRAINT (MANDATORY):
    - The entire roundup MUST fit into ONE single Telegram message (STRICT LIMIT: UNDER 3,500 CHARACTERS). Do NOT exceed this limit!
-   - Keep each bullet point to 1-2 punchy, information-dense sentences.
-   - Combine multiple accounts covering the exact same event into one line (e.g. <a href="{url1}">@{user1}</a> at {time1} IST and <a href="{url2}">@{user2}</a> at {time2} IST: {unified summary}).
+   - Keep each bullet point to 1-2 punchy, information-dense Hinglish sentences.
+   - Combine multiple accounts covering the exact same event into one line (e.g. <a href="{url1}">@{user1}</a> at {time1} IST aur <a href="{url2}">@{user2}</a> at {time2} IST: {unified Hinglish summary}).
    - Synthesize all high-signal updates from the 30-minute window cleanly so the entire briefing is delivered in one single screen.
 
-5. FORMATTING RULES:
+5. HINGLISH & FORMATTING RULES:
+   - Write ALL summaries, explanations, headlines, and context notes in natural, conversational HINGLISH (Roman/Latin script).
+   - Technical financial terms (e.g., S&P 500, inflation, yields, rate cuts, bull/bear market) and military terms (e.g., air defense, ballistic missile, drone strike) should remain in English terminology, but the sentence structure must be in natural Hindi/Hinglish.
    - Strictly use Telegram-compatible HTML tags: <b>bold</b>, <i>italic</i>, and <a href="...">clickable links</a>.
    - Every username MUST be a clickable link using the exact URL provided in the input, formatted as <a href="{tweet_url}">@{username}</a>.
-   - Write in simple, natural English (no corporate jargon or robotic phrasing).
    - Be skeptical and journalistic: clearly distinguish confirmed official claims from unverified scanner chatter.
    - Do NOT omit financial or market commentary if present in the input. Give both defense/geopolitics and macro finance their proper sections.
    - Do NOT use markdown formatting like ** or *. Use <b> and <i> only.
@@ -180,7 +183,7 @@ class GeminiExplainer(BaseExplainer):
 Tweet text:
 "{text}"
 
-Please provide a Grok-style plain English explanation and background context for this tweet."""
+Please provide a Grok-style fluent HINGLISH explanation and background context for this tweet."""
 
         try:
             response = await self.client.aio.models.generate_content(
@@ -190,7 +193,7 @@ Please provide a Grok-style plain English explanation and background context for
             return response.text.strip()
         except Exception as e:
             logger.error(f"Gemini generation error: {e}")
-            return f"💡 <b>Plain English:</b> {text}\n\n⚠️ <i>(AI explanation unavailable: {str(e)[:100]})</i>"
+            return f"💡 <b>Seedhi Baat (Hinglish):</b> {text}\n\n⚠️ <i>(AI explanation unavailable: {str(e)[:100]})</i>"
 
     async def _generate_single_batch(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str, is_first: bool = True) -> str:
         tweet_items = []
@@ -203,14 +206,14 @@ Please provide a Grok-style plain English explanation and background context for
 
         instruction = ""
         if not is_first:
-            instruction = "\nNote: This is a continuation section. Do NOT repeat the main 'X roundup... The big story is...' headline. Output directly with the category headers and entries.\n"
+            instruction = "\nNote: This is a continuation section. Do NOT repeat the main 'X roundup... Sabse badi khabar...' headline. Output directly with the category headers and entries in Hinglish.\n"
 
         prompt = (
             f"{ROUNDUP_SYSTEM_PROMPT}\n\n"
             f"{instruction}"
             f"Start Time: {start_time_ist}\n"
             f"End Time: {end_time_ist}\n\n"
-            f"Input Tweets ({len(tweets)} total - ensure 100% of these are covered):\n" + "\n".join(tweet_items)
+            f"Input Tweets ({len(tweets)} total - write 100% of the briefing in natural, fluent HINGLISH):\n" + "\n".join(tweet_items)
         )
 
         try:
@@ -280,7 +283,7 @@ class GroqExplainer(BaseExplainer):
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error(f"Groq generation error: {e}")
-            return f"💡 <b>Plain English:</b> {text}"
+            return f"💡 <b>Seedhi Baat (Hinglish):</b> {text}"
 
     async def generate_roundup(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str) -> str:
         start_time_ist = adjust_start_time_if_identical(start_time_ist, end_time_ist, tweets)
@@ -293,7 +296,7 @@ class GroqExplainer(BaseExplainer):
                 model=self.model,
                 messages=[
                     {"role": "system", "content": ROUNDUP_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Roundup from {start_time_ist} to {end_time_ist} IST:\n" + "\n".join(tweet_items)}
+                    {"role": "user", "content": f"Roundup from {start_time_ist} to {end_time_ist} IST (Output in smart Hinglish):\n" + "\n".join(tweet_items)}
                 ],
                 temperature=0.7
             )
@@ -309,7 +312,7 @@ class OllamaExplainer(BaseExplainer):
         self.model = config.OLLAMA_MODEL
 
     async def explain(self, tweet: Dict[str, Any]) -> str:
-        return f"💡 <b>Plain English:</b> {tweet.get('text', '')}"
+        return f"💡 <b>Seedhi Baat (Hinglish):</b> {tweet.get('text', '')}"
 
     async def generate_roundup(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str) -> str:
         return f"<b>X roundup, {start_time_ist} to {end_time_ist} IST</b>"
@@ -323,7 +326,7 @@ class XAIExplainer(BaseExplainer):
         self.model = config.XAI_MODEL
 
     async def explain(self, tweet: Dict[str, Any]) -> str:
-        return f"💡 <b>Plain English:</b> {tweet.get('text', '')}"
+        return f"💡 <b>Seedhi Baat (Hinglish):</b> {tweet.get('text', '')}"
 
     async def generate_roundup(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str) -> str:
         return f"<b>X roundup, {start_time_ist} to {end_time_ist} IST</b>"
