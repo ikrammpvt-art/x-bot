@@ -273,6 +273,24 @@ class TelegramCommandHandler:
                 disable_preview=False if lead_preview_url else True,
                 preview_url=lead_preview_url
             )
+
+            # Deliver native media cards for on-demand digest
+            media_tweets = [t for t in recent if t.get("has_media")]
+            if media_tweets:
+                for mt in media_tweets[:5]:
+                    try:
+                        caption = self.monitor.format_media_caption(mt)
+                        if mt.get("video_url"):
+                            await self.monitor.telegram.send_video(mt["video_url"], caption=caption)
+                        elif mt.get("photos") and len(mt["photos"]) > 1:
+                            album = [{"type": "photo", "url": u} for u in mt["photos"]]
+                            await self.monitor.telegram.send_media_group(album, caption=caption)
+                        elif mt.get("thumbnail_url") or (mt.get("photos") and len(mt["photos"]) == 1):
+                            p_url = mt.get("thumbnail_url") or mt["photos"][0]
+                            await self.monitor.telegram.send_photo(p_url, caption=caption)
+                        await asyncio.sleep(0.6)
+                    except Exception as me:
+                        logger.warning(f"Error delivering on-demand media for @{mt.get('screen_name')}: {me}")
             if sent:
                 logger.info(f"Successfully generated and delivered {hours:g}h digest ({len(recent)} tweets) to Telegram.")
             else:

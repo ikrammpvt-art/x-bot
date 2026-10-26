@@ -181,6 +181,92 @@ class TelegramNotifier:
 
         return all_ok
 
+    async def send_photo(self, photo_url: str, caption: str = "") -> bool:
+        """Sends a native photo with rich HTML caption directly into Telegram."""
+        if not self.is_configured():
+            return False
+        endpoint = f"{self.api_url}/sendPhoto"
+        clean_caption = self.sanitize_and_balance_html(caption[:1000]) if caption else ""
+        payload = {
+            "chat_id": self.chat_id,
+            "photo": photo_url,
+            "parse_mode": "HTML"
+        }
+        if clean_caption:
+            payload["caption"] = clean_caption
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(endpoint, json=payload, timeout=25) as resp:
+                    data = await resp.json()
+                    if resp.status == 200 and data.get("ok"):
+                        return True
+                    else:
+                        logger.warning(f"sendPhoto notice ({resp.status}): {data.get('description')}")
+                        return False
+        except Exception as e:
+            logger.error(f"Error sending photo to Telegram: {e}")
+            return False
+
+    async def send_video(self, video_url: str, caption: str = "") -> bool:
+        """Sends a native playable video with rich HTML caption directly into Telegram."""
+        if not self.is_configured():
+            return False
+        endpoint = f"{self.api_url}/sendVideo"
+        clean_caption = self.sanitize_and_balance_html(caption[:1000]) if caption else ""
+        payload = {
+            "chat_id": self.chat_id,
+            "video": video_url,
+            "parse_mode": "HTML"
+        }
+        if clean_caption:
+            payload["caption"] = clean_caption
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(endpoint, json=payload, timeout=35) as resp:
+                    data = await resp.json()
+                    if resp.status == 200 and data.get("ok"):
+                        return True
+                    else:
+                        logger.warning(f"sendVideo notice ({resp.status}): {data.get('description')}")
+                        return False
+        except Exception as e:
+            logger.error(f"Error sending video to Telegram: {e}")
+            return False
+
+    async def send_media_group(self, media_items: list, caption: str = "") -> bool:
+        """Sends a group of photos/videos as an album (up to 10 items)."""
+        if not self.is_configured() or not media_items:
+            return False
+        endpoint = f"{self.api_url}/sendMediaGroup"
+        clean_caption = self.sanitize_and_balance_html(caption[:1000]) if caption else ""
+
+        group = []
+        for i, item in enumerate(media_items[:10]):
+            m_type = item.get("type", "photo")
+            entry = {
+                "type": m_type,
+                "media": item.get("url")
+            }
+            if i == 0 and clean_caption:
+                entry["caption"] = clean_caption
+                entry["parse_mode"] = "HTML"
+            group.append(entry)
+
+        payload = {
+            "chat_id": self.chat_id,
+            "media": group
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(endpoint, json=payload, timeout=30) as resp:
+                    data = await resp.json()
+                    return resp.status == 200 and data.get("ok")
+        except Exception as e:
+            logger.error(f"Error sending media group: {e}")
+            return False
+
 
     async def notify_tweet(self, tweet: Dict[str, Any], explanation: str) -> bool:
         """Formats and delivers a new tweet notification with its AI breakdown."""

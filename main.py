@@ -73,6 +73,26 @@ class XBotMonitor:
         self._scan_lock = asyncio.Lock()
         self.last_cycle_end_ist: Optional[datetime] = None
 
+    @staticmethod
+    def format_media_caption(tweet: dict) -> str:
+        import re
+        handle = tweet.get("screen_name", "user")
+        time_ist = tweet.get("time_ist", "")
+        url = tweet.get("url", f"https://x.com/{handle}")
+        m_icon = "🎥 Video" if tweet.get("media_type") == "video" or tweet.get("video_url") else "📸 Photo"
+        raw_text = tweet.get("text", "").strip()
+        cleaned = re.sub(r'https?://t\.co/[a-zA-Z0-9]+', '', raw_text).strip()
+        if not cleaned:
+            cleaned = "Visual update posted."
+
+        caption = (
+            f"{m_icon} · <a href=\"{url}\"><b>@{handle}</b></a> ({time_ist})\n\n"
+            f"{cleaned}"
+        )
+        if len(caption) > 1000:
+            caption = caption[:995] + "..."
+        return caption
+
     def validate_environment(self) -> bool:
         """Validates configuration before starting."""
         valid = True
@@ -398,6 +418,26 @@ class XBotMonitor:
                     disable_preview=False if lead_preview_url else True,
                     preview_url=lead_preview_url
                 )
+
+                # Deliver native media cards (playable videos and photos) so user has full visual previews without clicking links
+                media_tweets = [t for t in cycle_new_tweets if t.get("has_media")]
+                if media_tweets:
+                    logger.info(f"Delivering {len(media_tweets)} native media preview(s) to Telegram...")
+                    # Deliver up to top 6 media tweets per cycle to keep chat well-balanced
+                    for mt in media_tweets[:6]:
+                        try:
+                            caption = self.format_media_caption(mt)
+                            if mt.get("video_url"):
+                                await self.telegram.send_video(mt["video_url"], caption=caption)
+                            elif mt.get("photos") and len(mt["photos"]) > 1:
+                                album = [{"type": "photo", "url": u} for u in mt["photos"]]
+                                await self.telegram.send_media_group(album, caption=caption)
+                            elif mt.get("thumbnail_url") or (mt.get("photos") and len(mt["photos"]) == 1):
+                                p_url = mt.get("thumbnail_url") or mt["photos"][0]
+                                await self.telegram.send_photo(p_url, caption=caption)
+                            await asyncio.sleep(0.6)
+                        except Exception as me:
+                            logger.warning(f"Error delivering native media for @{mt.get('screen_name')}: {me}")
 
                 # Record all as seen
                 for tweet in cycle_new_tweets:
