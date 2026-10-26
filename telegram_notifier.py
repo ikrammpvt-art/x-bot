@@ -101,15 +101,24 @@ class TelegramNotifier:
         return chunks
 
 
-    async def _send_single(self, text: str, disable_preview: bool = True) -> bool:
+    async def _send_single(self, text: str, disable_preview: bool = True, preview_url: Optional[str] = None) -> bool:
         import re
         endpoint = f"{self.api_url}/sendMessage"
         payload = {
             "chat_id": self.chat_id,
             "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": disable_preview
+            "parse_mode": "HTML"
         }
+        if preview_url:
+            payload["link_preview_options"] = {
+                "is_disabled": False,
+                "url": preview_url,
+                "prefer_large_media": True,
+                "show_above_text": True
+            }
+        else:
+            payload["disable_web_page_preview"] = disable_preview
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(endpoint, json=payload, timeout=15) as resp:
@@ -122,9 +131,13 @@ class TelegramNotifier:
                         clean_text = re.sub(r"<[^>]+>", "", text)
                         clean_payload = {
                             "chat_id": self.chat_id,
-                            "text": clean_text,
-                            "disable_web_page_preview": disable_preview
+                            "text": clean_text
                         }
+                        if preview_url:
+                            clean_payload["link_preview_options"] = payload["link_preview_options"]
+                        else:
+                            clean_payload["disable_web_page_preview"] = disable_preview
+
                         async with session.post(endpoint, json=clean_payload, timeout=15) as resp2:
                             data2 = await resp2.json()
                             if resp2.status == 200 and data2.get("ok"):
@@ -138,7 +151,7 @@ class TelegramNotifier:
             logger.error(f"Failed to send Telegram message: {e}")
             return False
 
-    async def send_message(self, text: str, disable_preview: bool = True) -> bool:
+    async def send_message(self, text: str, disable_preview: bool = True, preview_url: Optional[str] = None) -> bool:
         """Sends an HTML formatted message to Telegram, automatically splitting into parts if long."""
         if not self.is_configured():
             logger.error("Telegram is not configured. Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID.")
@@ -150,9 +163,13 @@ class TelegramNotifier:
 
         for i, chunk in enumerate(chunks, 1):
             msg = chunk
+            # Attach lead preview card to the first part
+            p_url = preview_url if i == 1 else None
+            dis_prev = False if p_url else disable_preview
+
             if total > 1:
                 msg = f"<b>[Part {i}/{total}]</b>\n\n{chunk}"
-            ok = await self._send_single(msg, disable_preview)
+            ok = await self._send_single(msg, disable_preview=dis_prev, preview_url=p_url)
             if not ok:
                 all_ok = False
             if total > 1:

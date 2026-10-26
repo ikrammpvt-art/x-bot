@@ -261,8 +261,18 @@ class TelegramCommandHandler:
             if start_str == end_str:
                 start_str = format_clock_ist((now - timedelta(minutes=max(15, int(hours * 60)))).astimezone(IST))
 
+            lead_preview_url = None
+            for tweet in recent:
+                if tweet.get("has_media") and tweet.get("thumbnail_url"):
+                    lead_preview_url = tweet["thumbnail_url"]
+                    break
+
             digest = await self.monitor.explainer.generate_roundup(recent, start_str, end_str)
-            sent = await self.monitor.telegram.send_message(digest, disable_preview=True)
+            sent = await self.monitor.telegram.send_message(
+                digest,
+                disable_preview=False if lead_preview_url else True,
+                preview_url=lead_preview_url
+            )
             if sent:
                 logger.info(f"Successfully generated and delivered {hours:g}h digest ({len(recent)} tweets) to Telegram.")
             else:

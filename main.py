@@ -384,9 +384,20 @@ class XBotMonitor:
                     end_time_ist=end_str
                 )
 
-                # Send to Telegram
-                logger.info(f"Delivering X Roundup to Telegram chat {config.TELEGRAM_CHAT_ID}...")
-                sent = await self.telegram.send_message(roundup_html, disable_preview=True)
+                # Identify lead visual media (photo or video preview) to feature as cover card
+                lead_preview_url = None
+                for tweet in cycle_new_tweets:
+                    if tweet.get("has_media") and tweet.get("thumbnail_url"):
+                        lead_preview_url = tweet["thumbnail_url"]
+                        break
+
+                # Send to Telegram with lead rich preview card if available
+                logger.info(f"Delivering X Roundup to Telegram chat {config.TELEGRAM_CHAT_ID} (Lead Media: {bool(lead_preview_url)})...")
+                sent = await self.telegram.send_message(
+                    roundup_html,
+                    disable_preview=False if lead_preview_url else True,
+                    preview_url=lead_preview_url
+                )
 
                 # Record all as seen
                 for tweet in cycle_new_tweets:

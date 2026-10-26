@@ -132,6 +132,13 @@ CRITICAL INTELLIGENCE & ENTITY ENRICHMENT RULES (MANDATORY):
    - Be skeptical and journalistic: clearly distinguish confirmed official claims from unverified scanner chatter.
    - Do NOT omit financial or market commentary if present in the input. Give both defense/geopolitics and macro finance their proper sections.
    - Do NOT use markdown formatting like ** or *. Use <b> and <i> only.
+
+6. MEDIA (PHOTO & VIDEO) TAGGING:
+   - Agar kisi tweet ke sath [VIDEO: url] diya gaya ho, to username aur time ke baad clickable <a href="{video_url}">[🎥 Video]</a> link lagayein:
+     Example: <a href="{tweet_url}">@{username}</a> at {time} IST <a href="{video_url}">[🎥 Video]</a>: {Hinglish summary of tweet and video}.
+   - Agar kisi tweet ke sath [PHOTO: url] diya gaya ho, to username aur time ke baad clickable <a href="{photo_url}">[📸 Photo]</a> link lagayein:
+     Example: <a href="{tweet_url}">@{username}</a> at {time} IST <a href="{photo_url}">[📸 Photo]</a>: {Hinglish summary of tweet and photo/chart/map}.
+   - Agar tweet me media nahi hai, to koi media tag na lagayein.
 """
 
 
@@ -202,7 +209,16 @@ Please provide a Grok-style fluent HINGLISH explanation and background context f
             url = t.get("url", f"https://x.com/{handle}")
             time_ist = t.get("time_ist", "")
             text = t.get("text", "").replace("\n", " ")
-            tweet_items.append(f"{i}. Author: @{handle} | URL: {url} | Time: {time_ist} | Text: {text}")
+
+            # Attach media indicators for Gemini
+            media_tag = ""
+            if t.get("video_url"):
+                media_tag = f" | Media: [VIDEO: {t['video_url']}]"
+            elif t.get("thumbnail_url") or t.get("photos"):
+                p_url = t.get("thumbnail_url") or (t["photos"][0] if t.get("photos") else "")
+                media_tag = f" | Media: [PHOTO: {p_url}]"
+
+            tweet_items.append(f"{i}. Author: @{handle} | URL: {url} | Time: {time_ist}{media_tag} | Text: {text}")
 
         instruction = ""
         if not is_first:
@@ -287,10 +303,15 @@ class GroqExplainer(BaseExplainer):
 
     async def generate_roundup(self, tweets: List[Dict[str, Any]], start_time_ist: str, end_time_ist: str) -> str:
         start_time_ist = adjust_start_time_if_identical(start_time_ist, end_time_ist, tweets)
-        tweet_items = [
-            f"- @{t.get('screen_name')} ({t.get('time_ist')}): {t.get('text')} [URL: {t.get('url')}]"
-            for t in tweets
-        ]
+        tweet_items = []
+        for t in tweets:
+            media_label = ""
+            if t.get("video_url"):
+                media_label = f" [VIDEO: {t['video_url']}]"
+            elif t.get("thumbnail_url") or t.get("photos"):
+                p_url = t.get("thumbnail_url") or (t["photos"][0] if t.get("photos") else "")
+                media_label = f" [PHOTO: {p_url}]"
+            tweet_items.append(f"- @{t.get('screen_name')} ({t.get('time_ist')}): {t.get('text')}{media_label} [URL: {t.get('url')}]")
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,

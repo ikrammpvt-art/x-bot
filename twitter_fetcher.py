@@ -11,6 +11,66 @@ import database
 logger = logging.getLogger("xbot.twitter")
 
 
+def extract_media_info(tweet) -> Dict[str, Any]:
+    """
+    Extracts photos, videos, and thumbnails from a Twikit tweet object.
+    Supports photos, videos, gifs, and raw dictionary structures.
+    """
+    photos = []
+    video_url = None
+    thumbnail_url = None
+    media_type = None
+
+    media_items = []
+    if hasattr(tweet, "media") and tweet.media:
+        media_items = tweet.media
+    elif hasattr(tweet, "_data") and isinstance(tweet._data, dict):
+        legacy = tweet._data.get("legacy", {})
+        media_items = (
+            legacy.get("extended_entities", {}).get("media", [])
+            or legacy.get("entities", {}).get("media", [])
+        )
+
+    for m in media_items:
+        m_type = getattr(m, "type", None) or (m.get("type") if isinstance(m, dict) else "photo")
+        p_url = getattr(m, "media_url_https", None) or getattr(m, "media_url", None)
+        if not p_url and isinstance(m, dict):
+            p_url = m.get("media_url_https") or m.get("media_url")
+
+        if m_type in ("video", "animated_gif"):
+            if not media_type or media_type == "photo":
+                media_type = "video" if m_type == "video" else "gif"
+            if p_url and not thumbnail_url:
+                thumbnail_url = p_url
+
+            v_info = getattr(m, "video_info", None) or (m.get("video_info") if isinstance(m, dict) else None)
+            if v_info and isinstance(v_info, dict) and "variants" in v_info:
+                mp4s = [
+                    v for v in v_info["variants"]
+                    if isinstance(v, dict) and v.get("content_type") == "video/mp4" and "url" in v
+                ]
+                if mp4s:
+                    # Pick highest bitrate
+                    mp4s.sort(key=lambda x: x.get("bitrate", 0), reverse=True)
+                    video_url = mp4s[0]["url"]
+        else:
+            if not media_type:
+                media_type = "photo"
+            if p_url and p_url not in photos:
+                photos.append(p_url)
+
+    if not thumbnail_url and photos:
+        thumbnail_url = photos[0]
+
+    return {
+        "photos": photos,
+        "video_url": video_url,
+        "thumbnail_url": thumbnail_url,
+        "media_type": media_type,
+        "has_media": bool(photos or video_url or thumbnail_url)
+    }
+
+
 class TwitterFetcher:
     def __init__(self):
         self.client = Client("en-US")
@@ -131,13 +191,8 @@ class TwitterFetcher:
             tweet_url = f"https://x.com/{screen_name}/status/{tweet_id}"
             created_at = str(getattr(tweet, "created_at", ""))
 
-            # Extract media URLs if any
-            media_urls = []
-            if hasattr(tweet, "media") and tweet.media:
-                for m in tweet.media:
-                    media_url = getattr(m, "media_url_https", None) or getattr(m, "url", None)
-                    if media_url:
-                        media_urls.append(media_url)
+            # Extract rich media (photos, videos, thumbnails)
+            media_info = extract_media_info(tweet)
 
             parsed_tweets.append({
                 "id": tweet_id,
@@ -149,7 +204,12 @@ class TwitterFetcher:
                 "is_retweet": is_retweet,
                 "is_quote": is_quote,
                 "is_reply": is_reply,
-                "media_urls": media_urls
+                "photos": media_info["photos"],
+                "video_url": media_info["video_url"],
+                "thumbnail_url": media_info["thumbnail_url"],
+                "media_type": media_info["media_type"],
+                "has_media": media_info["has_media"],
+                "media_urls": media_info["photos"]
             })
 
         database.update_account_checked(screen_name)
@@ -210,6 +270,8 @@ class TwitterFetcher:
                     tweet_url = f"https://x.com/{screen_name}/status/{tweet_id}"
                     created_at = str(getattr(tweet, "created_at", ""))
 
+                    media_info = extract_media_info(tweet)
+
                     all_parsed.append({
                         "id": tweet_id,
                         "screen_name": screen_name,
@@ -219,7 +281,13 @@ class TwitterFetcher:
                         "created_at": created_at,
                         "is_retweet": is_retweet,
                         "is_quote": is_quote,
-                        "is_reply": is_reply
+                        "is_reply": is_reply,
+                        "photos": media_info["photos"],
+                        "video_url": media_info["video_url"],
+                        "thumbnail_url": media_info["thumbnail_url"],
+                        "media_type": media_info["media_type"],
+                        "has_media": media_info["has_media"],
+                        "media_urls": media_info["photos"]
                     })
                 except Exception:
                     continue
@@ -279,6 +347,8 @@ class TwitterFetcher:
                 tweet_url = f"https://x.com/{screen_name}/status/{tweet_id}"
                 created_at = str(getattr(tweet, "created_at", ""))
 
+                media_info = extract_media_info(tweet)
+
                 parsed.append({
                     "id": tweet_id,
                     "screen_name": screen_name,
@@ -288,7 +358,13 @@ class TwitterFetcher:
                     "created_at": created_at,
                     "is_retweet": is_retweet,
                     "is_quote": is_quote,
-                    "is_reply": is_reply
+                    "is_reply": is_reply,
+                    "photos": media_info["photos"],
+                    "video_url": media_info["video_url"],
+                    "thumbnail_url": media_info["thumbnail_url"],
+                    "media_type": media_info["media_type"],
+                    "has_media": media_info["has_media"],
+                    "media_urls": media_info["photos"]
                 })
             except Exception as pe:
                 logger.debug(f"Skipped timeline item due to parse error: {pe}")

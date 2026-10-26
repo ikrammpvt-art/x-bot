@@ -132,11 +132,12 @@ def apply_patch():
     if client_file.exists():
         content = client_file.read_text(encoding="utf-8")
 
-        # 3a. Wrap init call
-        content = content.replace(
-            "await self.client_transaction.init(self.http, ct_headers)",
-            "try:\n                await self.client_transaction.init(self.http, ct_headers)\n            except Exception:\n                pass"
-        )
+        # 3a. Wrap init call idempotently
+        if "try:\n                await self.client_transaction.init(self.http, ct_headers)" not in content:
+            content = content.replace(
+                "await self.client_transaction.init(self.http, ct_headers)",
+                "try:\n                await self.client_transaction.init(self.http, ct_headers)\n            except Exception:\n                pass"
+            )
 
         # 3b. Wrap transaction ID generation
         old_tid = "tid = self.client_transaction.generate_transaction_id(method=method, path=urlparse(url).path)\n        headers['X-Client-Transaction-Id'] = tid"
