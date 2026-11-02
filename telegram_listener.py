@@ -36,7 +36,11 @@ class TelegramCommandHandler:
 
     def __init__(self, bot_token: str, authorized_chat_id: str, monitor_instance):
         self.bot_token = bot_token
-        self.authorized_chat_id = str(authorized_chat_id)
+        if isinstance(authorized_chat_id, list):
+            self.authorized_chat_ids = [str(c) for c in authorized_chat_id]
+        else:
+            self.authorized_chat_ids = [c.strip() for c in str(authorized_chat_id).split(",") if c.strip()]
+        self.authorized_chat_id = self.authorized_chat_ids[0] if self.authorized_chat_ids else ""
         self.monitor = monitor_instance
         self.running = False
         self.api_url = f"https://api.telegram.org/bot{self.bot_token}"
@@ -323,8 +327,8 @@ class TelegramCommandHandler:
                                     continue
 
                                 chat_id = str(msg["chat"]["id"])
-                                # Only respond to authorized chat id
-                                if chat_id != self.authorized_chat_id:
+                                # Only respond to authorized admin chat id
+                                if chat_id not in self.authorized_chat_ids:
                                     logger.warning(f"Ignoring message from unauthorized chat ID: {chat_id}")
                                     continue
 

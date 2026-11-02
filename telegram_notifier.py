@@ -11,11 +11,16 @@ logger = logging.getLogger("xbot.telegram")
 class TelegramNotifier:
     def __init__(self):
         self.bot_token = config.TELEGRAM_BOT_TOKEN
-        self.chat_id = config.TELEGRAM_CHAT_ID
+        self.chat_ids = config.get_telegram_chat_ids()
+        self.chat_id = self.chat_ids[0] if self.chat_ids else config.TELEGRAM_CHAT_ID
         self.api_url = f"https://api.telegram.org/bot{self.bot_token}"
 
     def is_configured(self) -> bool:
-        return bool(self.bot_token and self.chat_id)
+        return bool(self.bot_token and (self.chat_ids or self.chat_id))
+
+    def _get_target_chats(self) -> list:
+        targets = self.chat_ids if self.chat_ids else ([self.chat_id] if self.chat_id else [])
+        return targets
 
     @staticmethod
     def sanitize_and_balance_html(text: str) -> str:
@@ -104,52 +109,57 @@ class TelegramNotifier:
     async def _send_single(self, text: str, disable_preview: bool = True, preview_url: Optional[str] = None) -> bool:
         import re
         endpoint = f"{self.api_url}/sendMessage"
-        payload = {
-            "chat_id": self.chat_id,
-            "text": text,
-            "parse_mode": "HTML"
-        }
-        if preview_url:
-            payload["link_preview_options"] = {
-                "is_disabled": False,
-                "url": preview_url,
-                "prefer_large_media": True,
-                "show_above_text": True
-            }
-        else:
-            payload["disable_web_page_preview"] = disable_preview
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(endpoint, json=payload, timeout=15) as resp:
-                    data = await resp.json()
-                    if resp.status == 200 and data.get("ok"):
-                        return True
-                    elif "can't parse entities" in str(data.get("description", "")).lower():
-                        logger.warning("Telegram HTML entity parsing failed, retrying with clean plain text...")
-                        # Strip HTML tags and send cleanly as plain text so message is NEVER lost
-                        clean_text = re.sub(r"<[^>]+>", "", text)
-                        clean_payload = {
-                            "chat_id": self.chat_id,
-                            "text": clean_text
-                        }
-                        if preview_url:
-                            clean_payload["link_preview_options"] = payload["link_preview_options"]
-                        else:
-                            clean_payload["disable_web_page_preview"] = disable_preview
-
-                        async with session.post(endpoint, json=clean_payload, timeout=15) as resp2:
-                            data2 = await resp2.json()
-                            if resp2.status == 200 and data2.get("ok"):
-                                return True
-                            logger.error(f"Plain text fallback also failed: {data2.get('description')}")
-                            return False
-                    else:
-                        logger.error(f"Telegram API error ({resp.status}): {data.get('description')}")
-                        return False
-        except Exception as e:
-            logger.error(f"Failed to send Telegram message: {e}")
+        targets = self._get_target_chats()
+        if not targets:
             return False
+
+        any_ok = False
+        for cid in targets:
+            payload = {
+                "chat_id": cid,
+                "text": text,
+                "parse_mode": "HTML"
+            }
+            if preview_url:
+                payload["link_preview_options"] = {
+                    "is_disabled": False,
+                    "url": preview_url,
+                    "prefer_large_media": True,
+                    "show_above_text": True
+                }
+            else:
+                payload["disable_web_page_preview"] = disable_preview
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(endpoint, json=payload, timeout=15) as resp:
+                        data = await resp.json()
+                        if resp.status == 200 and data.get("ok"):
+                            any_ok = True
+                        elif "can't parse entities" in str(data.get("description", "")).lower():
+                            logger.warning(f"Telegram HTML entity parsing failed for {cid}, retrying with clean plain text...")
+                            clean_text = re.sub(r"<[^>]+>", "", text)
+                            clean_payload = {
+                                "chat_id": cid,
+                                "text": clean_text
+                            }
+                            if preview_url:
+                                clean_payload["link_preview_options"] = payload["link_preview_options"]
+                            else:
+                                clean_payload["disable_web_page_preview"] = disable_preview
+
+                            async with session.post(endpoint, json=clean_payload, timeout=15) as resp2:
+                                data2 = await resp2.json()
+                                if resp2.status == 200 and data2.get("ok"):
+                                    any_ok = True
+                                else:
+                                    logger.error(f"Plain text fallback also failed for {cid}: {data2.get('description')}")
+                        else:
+                            logger.error(f"Telegram API error for {cid} ({resp.status}): {data.get('description')}")
+            except Exception as e:
+                logger.error(f"Failed to send Telegram message to {cid}: {e}")
+
+        return any_ok
 
     async def send_message(self, text: str, disable_preview: bool = True, preview_url: Optional[str] = None) -> bool:
         """Sends an HTML formatted message to Telegram, automatically splitting into parts if long."""
@@ -177,7 +187,7 @@ class TelegramNotifier:
                 await asyncio.sleep(0.5)
 
         if all_ok:
-            logger.info(f"Successfully delivered {total} message chunk(s) to Telegram chat {self.chat_id}.")
+            logger.info(f"Successfully delivered {total} message chunk(s) to targets: {self._get_target_chats()}.")
 
         return all_ok
 
@@ -187,26 +197,30 @@ class TelegramNotifier:
             return False
         endpoint = f"{self.api_url}/sendPhoto"
         clean_caption = self.sanitize_and_balance_html(caption[:1000]) if caption else ""
-        payload = {
-            "chat_id": self.chat_id,
-            "photo": photo_url,
-            "parse_mode": "HTML"
-        }
-        if clean_caption:
-            payload["caption"] = clean_caption
+        targets = self._get_target_chats()
+        any_ok = False
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(endpoint, json=payload, timeout=25) as resp:
-                    data = await resp.json()
-                    if resp.status == 200 and data.get("ok"):
-                        return True
-                    else:
-                        logger.warning(f"sendPhoto notice ({resp.status}): {data.get('description')}")
-                        return False
-        except Exception as e:
-            logger.error(f"Error sending photo to Telegram: {e}")
-            return False
+        for cid in targets:
+            payload = {
+                "chat_id": cid,
+                "photo": photo_url,
+                "parse_mode": "HTML"
+            }
+            if clean_caption:
+                payload["caption"] = clean_caption
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(endpoint, json=payload, timeout=25) as resp:
+                        data = await resp.json()
+                        if resp.status == 200 and data.get("ok"):
+                            any_ok = True
+                        else:
+                            logger.warning(f"sendPhoto notice for {cid} ({resp.status}): {data.get('description')}")
+            except Exception as e:
+                logger.error(f"Error sending photo to {cid}: {e}")
+
+        return any_ok
 
     async def send_video(self, video_url: str, caption: str = "") -> bool:
         """Sends a native playable video with rich HTML caption directly into Telegram."""
@@ -214,26 +228,30 @@ class TelegramNotifier:
             return False
         endpoint = f"{self.api_url}/sendVideo"
         clean_caption = self.sanitize_and_balance_html(caption[:1000]) if caption else ""
-        payload = {
-            "chat_id": self.chat_id,
-            "video": video_url,
-            "parse_mode": "HTML"
-        }
-        if clean_caption:
-            payload["caption"] = clean_caption
+        targets = self._get_target_chats()
+        any_ok = False
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(endpoint, json=payload, timeout=35) as resp:
-                    data = await resp.json()
-                    if resp.status == 200 and data.get("ok"):
-                        return True
-                    else:
-                        logger.warning(f"sendVideo notice ({resp.status}): {data.get('description')}")
-                        return False
-        except Exception as e:
-            logger.error(f"Error sending video to Telegram: {e}")
-            return False
+        for cid in targets:
+            payload = {
+                "chat_id": cid,
+                "video": video_url,
+                "parse_mode": "HTML"
+            }
+            if clean_caption:
+                payload["caption"] = clean_caption
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(endpoint, json=payload, timeout=35) as resp:
+                        data = await resp.json()
+                        if resp.status == 200 and data.get("ok"):
+                            any_ok = True
+                        else:
+                            logger.warning(f"sendVideo notice for {cid} ({resp.status}): {data.get('description')}")
+            except Exception as e:
+                logger.error(f"Error sending video to {cid}: {e}")
+
+        return any_ok
 
     async def send_media_group(self, media_items: list, caption: str = "") -> bool:
         """Sends a group of photos/videos as an album (up to 10 items)."""
@@ -254,18 +272,26 @@ class TelegramNotifier:
                 entry["parse_mode"] = "HTML"
             group.append(entry)
 
-        payload = {
-            "chat_id": self.chat_id,
-            "media": group
-        }
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(endpoint, json=payload, timeout=30) as resp:
-                    data = await resp.json()
-                    return resp.status == 200 and data.get("ok")
-        except Exception as e:
-            logger.error(f"Error sending media group: {e}")
-            return False
+        targets = self._get_target_chats()
+        any_ok = False
+
+        for cid in targets:
+            payload = {
+                "chat_id": cid,
+                "media": group
+            }
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(endpoint, json=payload, timeout=30) as resp:
+                        data = await resp.json()
+                        if resp.status == 200 and data.get("ok"):
+                            any_ok = True
+                        else:
+                            logger.warning(f"sendMediaGroup notice for {cid} ({resp.status}): {data.get('description')}")
+            except Exception as e:
+                logger.error(f"Error sending media group to {cid}: {e}")
+
+        return any_ok
 
 
     async def notify_tweet(self, tweet: Dict[str, Any], explanation: str) -> bool:

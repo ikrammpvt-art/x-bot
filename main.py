@@ -130,7 +130,7 @@ class XBotMonitor:
         if self.telegram.is_configured():
             self.listener = TelegramCommandHandler(
                 bot_token=config.TELEGRAM_BOT_TOKEN,
-                authorized_chat_id=config.TELEGRAM_CHAT_ID,
+                authorized_chat_id=config.get_telegram_admin_ids(),
                 monitor_instance=self
             )
             asyncio.create_task(self.listener.start())

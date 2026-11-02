@@ -13,6 +13,25 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "").strip()
+
+
+def get_telegram_chat_ids() -> List[str]:
+    """Returns list of all target chat/channel IDs from TELEGRAM_CHAT_ID (comma-separated)."""
+    if not TELEGRAM_CHAT_ID:
+        return []
+    return [cid.strip() for cid in TELEGRAM_CHAT_ID.split(",") if cid.strip()]
+
+
+def get_telegram_admin_ids() -> List[str]:
+    """Returns list of authorized admin user IDs for command execution."""
+    raw = TELEGRAM_ADMIN_CHAT_ID or TELEGRAM_CHAT_ID
+    if not raw:
+        return []
+    # Filter out channel handles (e.g. @channel or -100xxx) from admin IDs if personal ID is present
+    ids = [cid.strip() for cid in raw.split(",") if cid.strip()]
+    user_ids = [cid for cid in ids if not cid.startswith("@") and not cid.startswith("-100")]
+    return user_ids if user_ids else ids
 
 # Twitter Scraping
 TWITTER_AUTH_TOKEN = os.getenv("TWITTER_AUTH_TOKEN", "").strip()
